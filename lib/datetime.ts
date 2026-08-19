@@ -26,6 +26,32 @@ export function formatFechaHorario(fechaHorario: string) {
   return `${fechaTexto} · ${horaTexto}hs`;
 }
 
+/** Formato compacto 24h para el bracket: "23 Feb, 22:00 hs" */
+export function formatFechaCuadro(fechaHorario: string | null | undefined) {
+  if (!fechaHorario) return "";
+
+  const fecha = new Date(fechaHorario);
+  if (Number.isNaN(fecha.getTime())) return "";
+
+  const meses = [
+    "Ene",
+    "Feb",
+    "Mar",
+    "Abr",
+    "May",
+    "Jun",
+    "Jul",
+    "Ago",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dic",
+  ];
+  const pad = (valor: number) => String(valor).padStart(2, "0");
+
+  return `${fecha.getDate()} ${meses[fecha.getMonth()]}, ${pad(fecha.getHours())}:${pad(fecha.getMinutes())} hs`;
+}
+
 // Convierte un timestamp ISO (lo que devuelve Supabase) al formato que
 // espera el input `datetime-local` ("YYYY-MM-DDTHH:mm", en hora local del
 // navegador). Función pura: mismo input, mismo output, sin efectos.
@@ -47,4 +73,23 @@ export function fromDatetimeLocalValue(valor: string): string | null {
 
   const fecha = new Date(valor);
   return Number.isNaN(fecha.getTime()) ? null : fecha.toISOString();
+}
+
+export function toDateInputValue(fechaHorario: string | null) {
+  const local = toDatetimeLocalValue(fechaHorario);
+  return local ? local.slice(0, 10) : "";
+}
+
+export function toTimeInputValue(fechaHorario: string | null) {
+  const local = toDatetimeLocalValue(fechaHorario);
+  return local ? local.slice(11, 16) : "";
+}
+
+/** Junta date + time locales en un ISO para `partidos.fecha_horario`. */
+export function fromDateAndTimeValues(
+  fecha: string,
+  hora: string
+): string | null {
+  if (!fecha) return null;
+  return fromDatetimeLocalValue(`${fecha}T${hora || "00:00"}`);
 }

@@ -6,15 +6,40 @@
 export type EstadoTorneo = "inscripcion" | "activo" | "finalizado";
 
 export type FormatoTorneo =
-  | "2 Partidos Garantizados"
-  | "Eliminación Directa"
-  | "Zonas + Llaves";
+  | "eliminacion_directa"
+  | "grupos_eliminatoria"
+  | "clasificacion_eliminatoria";
 
 export const FORMATOS_TORNEO: FormatoTorneo[] = [
-  "2 Partidos Garantizados",
-  "Eliminación Directa",
-  "Zonas + Llaves",
+  "eliminacion_directa",
+  "grupos_eliminatoria",
+  "clasificacion_eliminatoria",
 ];
+
+export const FORMATO_TORNEO_LABELS: Record<FormatoTorneo, string> = {
+  eliminacion_directa: "Eliminación Directa",
+  grupos_eliminatoria: "Fase de Grupos + Eliminatoria",
+  clasificacion_eliminatoria: "Fase de Clasificación + Eliminación Directa",
+};
+
+const FORMATOS_LEGACY: Record<string, FormatoTorneo> = {
+  "Eliminación Directa": "eliminacion_directa",
+  "Zonas + Llaves": "grupos_eliminatoria",
+  "2 Partidos Garantizados": "clasificacion_eliminatoria",
+  nivelacion_oro_plata: "clasificacion_eliminatoria",
+  "Por definir": "eliminacion_directa",
+};
+
+/** Normaliza el formato guardado (incluye labels viejos de la UI). */
+export function normalizarFormatoTorneo(
+  formato: string | null | undefined
+): FormatoTorneo {
+  if (!formato) return "eliminacion_directa";
+  if (FORMATOS_TORNEO.includes(formato as FormatoTorneo)) {
+    return formato as FormatoTorneo;
+  }
+  return FORMATOS_LEGACY[formato] ?? "eliminacion_directa";
+}
 
 // Coincide exactamente con las columnas de la tabla "torneos" en Supabase.
 // `categorias` es un array de texto (una o más de CATEGORIAS_JUGADOR) y
@@ -92,6 +117,7 @@ export interface TorneoJugador {
   id: string;
   torneo_id: string;
   jugador_id: string;
+  categoria: string | null;
   created_at: string;
 }
 

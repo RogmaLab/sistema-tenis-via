@@ -6,13 +6,12 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type FormEvent,
 } from "react";
 import {
   ArrowLeft,
-  Calendar,
-  MapPin,
   Pencil,
   Shuffle,
   Trash2,
@@ -25,13 +24,16 @@ import {
   actualizarResultadoPartidoConPropagacion,
   generarCrucesClasificacion,
   generarCuadroFinal,
+  type CruceDraft,
 } from "@/lib/motor-torneo";
 import {
   CANCHAS_TORNEO,
+  CATEGORIAS_JUGADOR,
   FASES_PARTIDO,
   type EstadoPartido,
   type Jugador,
   type Torneo,
+  normalizarFormatoTorneo,
 } from "@/lib/types";
 import { ESTADO_BADGE_STYLES, ESTADO_LABELS, calcularEstadoVisual } from "@/lib/torneo-estado";
 import {
@@ -40,26 +42,37 @@ import {
   fromDatetimeLocalValue,
   toDatetimeLocalValue,
 } from "@/lib/datetime";
-import { hayCuadroEliminatorio } from "@/lib/adaptar-cuadro-torneo";
-import { CuadroTorneo } from "@/components/CuadroTorneo";
+import {
+  hayCuadroEliminatorio,
+  partidosDelCuadroPorJugadores,
+  rondasActivasDelCuadro,
+  rondaMasAvanzadaConActividad,
+  idsRondasPosterioresDe,
+  RONDA_CUADRO_LABELS,
+} from "@/lib/adaptar-cuadro-torneo";
+import { CuadroLlaves } from "@/components/CuadroLlaves";
+import { FaseClasificacionTab } from "@/components/FaseClasificacionTab";
+import { ModalEditarPrimeraRonda } from "@/components/ModalEditarPrimeraRonda";
+import { ModalProgramarPartido } from "@/components/ModalProgramarPartido";
 import { useAuth } from "@/components/auth-provider";
-
-const ESTADO_PARTIDO_BADGE_STYLES: Record<EstadoPartido, string> = {
-  Pendiente: "bg-accent/15 text-accent",
-  Finalizado: "bg-foreground/10 text-foreground/50",
-};
 
 // Fila de la tabla intermedia "torneo_jugadores" con los datos del jugador
 // embebidos gracias a la FK jugador_id -> jugadores.id (select anidado de
 // Supabase/PostgREST, sin necesidad de un join manual en el cliente).
 interface Inscripto {
   id: string;
+  categoria: string | null;
   jugador: {
     id: string;
     nombre_completo: string;
     categoria: string;
     genero: string;
   };
+}
+
+function categoriaDeCompetencia(inscripto: Inscripto) {
+  const asignada = inscripto.categoria?.trim();
+  return asignada || inscripto.jugador.categoria;
 }
 
 // Fila de "partidos" con jugador_1 / jugador_2 embebidos vía sus FKs.
@@ -89,6 +102,22 @@ const SETS_VACIOS: SetScore[] = [
   { j1: "", j2: "" },
 ];
 
+function EmptyStateCategoria() {
+  return (
+    <section className="flex min-h-[280px] flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-surface px-6 py-16 text-center">
+      <p className="text-base font-semibold text-foreground/70">
+        Selecciona una categoría específica arriba para ver su cuadro de
+        competencia
+      </p>
+      <p className="mt-2 max-w-sm text-sm text-foreground/40">
+        Cada categoría es un torneo propio. No se pueden mezclar cuadros.
+      </p>
+    </section>
+  );
+}
+
+type PestanaDetalle = "jugadores" | "grupos" | "clasificacion" | "cuadro";
+
 export function TorneoDetalleClient() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
@@ -102,6 +131,7 @@ export function TorneoDetalleClient() {
   const [inscriptos, setInscriptos] = useState<Inscripto[]>([]);
   const [isLoadingInscriptos, setIsLoadingInscriptos] = useState(true);
   const [todosLosJugadores, setTodosLosJugadores] = useState<Jugador[]>([]);
+  const [isLoadingJugadores, setIsLoadingJugadores] = useState(true);
 
   const [partidos, setPartidos] = useState<PartidoConJugadores[]>([]);
   const [isLoadingPartidos, setIsLoadingPartidos] = useState(true);
@@ -109,7 +139,13 @@ export function TorneoDetalleClient() {
   const [isGenerandoCuadro, setIsGenerandoCuadro] = useState(false);
 
   const [isModalInscribirOpen, setIsModalInscribirOpen] = useState(false);
+  const [idsInscribir, setIdsInscribir] = useState<string[]>([]);
+  const [categoriaInscribir, setCategoriaInscribir] = useState("");
+  const [busquedaInscribir, setBusquedaInscribir] = useState("");
+  const [isInscribiendo, setIsInscribiendo] = useState(false);
   const [partidoCargandoResultado, setPartidoCargandoResultado] =
+    useState<PartidoConJugadores | null>(null);
+  const [partidoProgramando, setPartidoProgramando] =
     useState<PartidoConJugadores | null>(null);
   const [setsResultado, setSetsResultado] = useState<SetScore[]>(SETS_VACIOS);
   // Solo se setea cuando el usuario toca explícitamente un jugador para
@@ -119,6 +155,16 @@ export function TorneoDetalleClient() {
   const [ganadorManualId, setGanadorManualId] = useState<string | null>(null);
   const [partidoEditando, setPartidoEditando] =
     useState<PartidoConJugadores | null>(null);
+  const [isModalEditarCuadroOpen, setIsModalEditarCuadroOpen] =
+    useState(false);
+  const [pestanaActiva, setPestanaActiva] =
+    useState<PestanaDetalle>("jugadores");
+  const [categoriaFiltro, setCategoriaFiltro] = useState("Todas");
+  const [generoFiltro, setGeneroFiltro] = useState("Todos");
+  const [crucesDraft, setCrucesDraft] = useState<CruceDraft[]>([]);
+  const [rondaCuadroManual, setRondaCuadroManual] = useState<string | null>(
+    null
+  );
 
   // Fetchers "puros": solo consultan Supabase y devuelven el resultado (o
   // `null` si hubo error), sin tocar ningún estado. Sirven de base tanto
@@ -140,13 +186,31 @@ export function TorneoDetalleClient() {
   }, [torneoId, supabase]);
 
   const fetchInscriptosDesdeSupabase = useCallback(async () => {
-    const { data, error } = await supabase
-      .from("torneo_jugadores")
-      .select(
-        "id, jugador:jugador_id ( id, nombre_completo, categoria, genero )"
-      )
-      .eq("torneo_id", torneoId)
-      .order("created_at", { ascending: true });
+    const consulta = () =>
+      supabase
+        .from("torneo_jugadores")
+        .select(
+          "id, categoria, jugador:jugador_id ( id, nombre_completo, categoria, genero )"
+        )
+        .eq("torneo_id", torneoId)
+        .order("created_at", { ascending: true });
+
+    let { data, error } = await consulta();
+
+    if (error?.message.toLowerCase().includes("categoria")) {
+      const fallback = await supabase
+        .from("torneo_jugadores")
+        .select(
+          "id, jugador:jugador_id ( id, nombre_completo, categoria, genero )"
+        )
+        .eq("torneo_id", torneoId)
+        .order("created_at", { ascending: true });
+      data = (fallback.data ?? []).map((fila) => ({
+        ...fila,
+        categoria: null,
+      }));
+      error = fallback.error;
+    }
 
     if (error) {
       console.error("Error al cargar los inscriptos:", error.message);
@@ -159,12 +223,12 @@ export function TorneoDetalleClient() {
   const fetchTodosLosJugadoresDesdeSupabase = useCallback(async () => {
     const { data, error } = await supabase
       .from("jugadores")
-      .select("*")
+      .select("id, nombre_completo, whatsapp, categoria, genero")
       .order("nombre_completo", { ascending: true });
 
     if (error) {
       console.error("Error al cargar jugadores:", error.message);
-      return null;
+      return [];
     }
 
     return (data as Jugador[]) ?? [];
@@ -228,7 +292,8 @@ export function TorneoDetalleClient() {
       if (inscriptosData) setInscriptos(inscriptosData);
       setIsLoadingInscriptos(false);
 
-      if (jugadoresData) setTodosLosJugadores(jugadoresData);
+      setTodosLosJugadores(jugadoresData ?? []);
+      setIsLoadingJugadores(false);
 
       if (partidosData) setPartidos(partidosData);
       setIsLoadingPartidos(false);
@@ -244,16 +309,230 @@ export function TorneoDetalleClient() {
     fetchPartidosDesdeSupabase,
   ]);
 
-  // Se ofrece para inscribir cualquier jugador de la base, sin importar su
-  // categoría nominal: Stefano necesita poder fusionar categorías (ej. subir
-  // jugadores de 5ta a un cuadro de 4ta) según la realidad del club. Lo
-  // único que se excluye son los jugadores que ya están inscriptos acá.
+  const cargarTodosLosJugadores = useCallback(async () => {
+    setIsLoadingJugadores(true);
+    const data = await fetchTodosLosJugadoresDesdeSupabase();
+    setTodosLosJugadores(data);
+    setIsLoadingJugadores(false);
+  }, [fetchTodosLosJugadoresDesdeSupabase]);
+
+  // Lista del club entero. Solo se oculta quien ya compete en la categoría
+  // destino; si está inscripto en otra, sigue apareciendo para cruzarlo.
   const jugadoresDisponibles = useMemo(() => {
-    const idsInscriptos = new Set(inscriptos.map((i) => i.jugador.id));
-    return todosLosJugadores.filter(
-      (jugador) => !idsInscriptos.has(jugador.id)
+    const idsEnEstaCategoria = new Set(
+      inscriptos
+        .filter(
+          (inscripto) =>
+            Boolean(categoriaInscribir) &&
+            categoriaDeCompetencia(inscripto) === categoriaInscribir
+        )
+        .map((inscripto) => inscripto.jugador.id)
     );
-  }, [todosLosJugadores, inscriptos]);
+    return todosLosJugadores.filter(
+      (jugador) => !idsEnEstaCategoria.has(jugador.id)
+    );
+  }, [todosLosJugadores, inscriptos, categoriaInscribir]);
+
+  const jugadoresDisponiblesFiltrados = useMemo(() => {
+    const q = busquedaInscribir.trim().toLowerCase();
+    if (!q) return jugadoresDisponibles;
+    return jugadoresDisponibles.filter((jugador) =>
+      `${jugador.nombre_completo} ${jugador.categoria}`
+        .toLowerCase()
+        .includes(q)
+    );
+  }, [jugadoresDisponibles, busquedaInscribir]);
+
+  const categoriasInscriptos = useMemo(() => {
+    const base =
+      generoFiltro === "Todos"
+        ? inscriptos
+        : inscriptos.filter(
+            (inscripto) => inscripto.jugador.genero === generoFiltro
+          );
+    const unicas = [
+      ...new Set(
+        base
+          .map((inscripto) => categoriaDeCompetencia(inscripto))
+          .filter((categoria) => Boolean(categoria))
+      ),
+    ].sort((a, b) => a.localeCompare(b, "es"));
+    return ["Todas", ...unicas];
+  }, [inscriptos, generoFiltro]);
+
+  const inscriptosFiltrados = useMemo(() => {
+    return inscriptos.filter((inscripto) => {
+      const pasaGenero =
+        generoFiltro === "Todos" || inscripto.jugador.genero === generoFiltro;
+      const pasaCategoria =
+        categoriaFiltro === "Todas" ||
+        categoriaDeCompetencia(inscripto) === categoriaFiltro;
+      return pasaGenero && pasaCategoria;
+    });
+  }, [inscriptos, generoFiltro, categoriaFiltro]);
+
+  const partidosClasificacionFiltrados = useMemo(() => {
+    const ids = new Set(
+      inscriptosFiltrados.map((inscripto) => inscripto.jugador.id)
+    );
+    return partidos.filter((partido) => {
+      if (partido.fase !== "Clasificacion") return false;
+      const j1 = partido.jugador_1?.id;
+      const j2 = partido.jugador_2?.id;
+      return Boolean((j1 && ids.has(j1)) || (j2 && ids.has(j2)));
+    });
+  }, [partidos, inscriptosFiltrados]);
+
+  const idsJugadoresFiltrados = useMemo(
+    () => inscriptosFiltrados.map((inscripto) => inscripto.jugador.id),
+    [inscriptosFiltrados]
+  );
+
+  const partidosCuadroCategoria = useMemo(
+    () => partidosDelCuadroPorJugadores(partidos, idsJugadoresFiltrados),
+    [partidos, idsJugadoresFiltrados]
+  );
+
+  const clasificacionCategoriaCompleta =
+    partidosClasificacionFiltrados.length > 0 &&
+    partidosClasificacionFiltrados.every(
+      (partido) =>
+        partido.estado === "Finalizado" && Boolean(partido.ganador_id)
+    );
+
+  const rondasCuadroDisponibles = useMemo(
+    () => rondasActivasDelCuadro(partidosCuadroCategoria),
+    [partidosCuadroCategoria]
+  );
+  const rondaCuadroSugerida = useMemo(
+    () => rondaMasAvanzadaConActividad(partidosCuadroCategoria),
+    [partidosCuadroCategoria]
+  );
+  const rondaCuadroActiva =
+    rondaCuadroManual &&
+    rondasCuadroDisponibles.some((fase) => fase === rondaCuadroManual)
+      ? rondaCuadroManual
+      : rondaCuadroSugerida;
+  const partidosDeRondaActiva = useMemo(() => {
+    if (!rondaCuadroActiva) return [];
+    return partidosCuadroCategoria.filter(
+      (partido) => partido.fase === rondaCuadroActiva
+    );
+  }, [partidosCuadroCategoria, rondaCuadroActiva]);
+  const jugadoresElegiblesCuadro = useMemo(() => {
+    const porId = new Map<string, { id: string; nombre_completo: string }>();
+    for (const inscripto of inscriptosFiltrados) {
+      porId.set(inscripto.jugador.id, {
+        id: inscripto.jugador.id,
+        nombre_completo: inscripto.jugador.nombre_completo,
+      });
+    }
+    for (const partido of [
+      ...partidosClasificacionFiltrados,
+      ...partidosDeRondaActiva,
+    ]) {
+      if (partido.jugador_1) {
+        porId.set(partido.jugador_1.id, {
+          id: partido.jugador_1.id,
+          nombre_completo: partido.jugador_1.nombre_completo,
+        });
+      }
+      if (partido.jugador_2) {
+        porId.set(partido.jugador_2.id, {
+          id: partido.jugador_2.id,
+          nombre_completo: partido.jugador_2.nombre_completo,
+        });
+      }
+    }
+    return [...porId.values()];
+  }, [
+    inscriptosFiltrados,
+    partidosClasificacionFiltrados,
+    partidosDeRondaActiva,
+  ]);
+
+  const idsRondasPosterioresCuadro = useMemo(() => {
+    if (!rondaCuadroActiva) return [];
+    return idsRondasPosterioresDe(partidosCuadroCategoria, rondaCuadroActiva);
+  }, [partidosCuadroCategoria, rondaCuadroActiva]);
+
+  const hayCrucesSinGuardar =
+    crucesDraft.length > 0 && partidosClasificacionFiltrados.length === 0;
+
+  const hayCrucesSinGuardarRef = useRef(hayCrucesSinGuardar);
+  hayCrucesSinGuardarRef.current = hayCrucesSinGuardar;
+
+  useEffect(() => {
+    if (!hayCrucesSinGuardar) return;
+
+    const mensaje =
+      "Tienes cruces sin guardar. ¿Seguro que quieres salir?";
+
+    function onBeforeUnload(event: BeforeUnloadEvent) {
+      event.preventDefault();
+      event.returnValue = mensaje;
+    }
+
+    function onDocumentClick(event: MouseEvent) {
+      if (!hayCrucesSinGuardarRef.current) return;
+      if (event.defaultPrevented || event.button !== 0) return;
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+        return;
+      }
+      const ancla = (event.target as Element | null)?.closest("a[href]");
+      if (!ancla) return;
+      const anchor = ancla as HTMLAnchorElement;
+      if (anchor.target === "_blank" || anchor.hasAttribute("download")) {
+        return;
+      }
+      const destino = new URL(anchor.href, window.location.href);
+      const actual = new URL(window.location.href);
+      if (
+        destino.pathname === actual.pathname &&
+        destino.search === actual.search
+      ) {
+        return;
+      }
+      if (!window.confirm(mensaje)) {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+      }
+    }
+
+    function onPopState() {
+      if (!hayCrucesSinGuardarRef.current) return;
+      if (!window.confirm(mensaje)) {
+        window.history.pushState(null, "", window.location.href);
+      }
+    }
+
+    window.history.pushState(null, "", window.location.href);
+    window.addEventListener("beforeunload", onBeforeUnload);
+    window.addEventListener("popstate", onPopState);
+    document.addEventListener("click", onDocumentClick, true);
+
+    return () => {
+      window.removeEventListener("beforeunload", onBeforeUnload);
+      window.removeEventListener("popstate", onPopState);
+      document.removeEventListener("click", onDocumentClick, true);
+    };
+  }, [hayCrucesSinGuardar]);
+
+  function handleCambiarGeneroFiltro(genero: string) {
+    if (genero === generoFiltro) return;
+    setGeneroFiltro(genero);
+    setCategoriaFiltro("Todas");
+    setCrucesDraft([]);
+    setRondaCuadroManual(null);
+  }
+
+  function handleCambiarCategoriaFiltro(categoria: string) {
+    if (categoria === categoriaFiltro) return;
+    setCategoriaFiltro(categoria);
+    setCrucesDraft([]);
+    setRondaCuadroManual(null);
+  }
 
   // Solo cuentan los sets donde se cargaron los games de ambos jugadores.
   const setsValidos = useMemo(
@@ -305,6 +584,25 @@ export function TorneoDetalleClient() {
   // torneo todavía no cargó; en la práctica solo se lee más abajo dentro
   // del bloque donde `torneo` ya está garantizado no-nulo.
   const estadoVisual = torneo ? calcularEstadoVisual(torneo) : "inscripcion";
+  const formatoTorneo = normalizarFormatoTorneo(torneo?.formato);
+
+  const pestanasVisibles = useMemo(() => {
+    const pestanas: { id: PestanaDetalle; label: string }[] = [
+      { id: "jugadores", label: "Jugadores Inscriptos" },
+    ];
+    if (formatoTorneo === "grupos_eliminatoria") {
+      pestanas.push({ id: "grupos", label: "Fase de Grupos" });
+    }
+    if (formatoTorneo === "clasificacion_eliminatoria") {
+      pestanas.push({ id: "clasificacion", label: "Fase de Clasificación" });
+    }
+    pestanas.push({ id: "cuadro", label: "Cuadro Eliminatorio" });
+    return pestanas;
+  }, [formatoTorneo]);
+
+  const pestanaMostrada = pestanasVisibles.some((p) => p.id === pestanaActiva)
+    ? pestanaActiva
+    : "jugadores";
 
   function handleCambiarSet(
     index: number,
@@ -323,28 +621,91 @@ export function TorneoDetalleClient() {
 
   function cerrarModalInscribir() {
     setIsModalInscribirOpen(false);
+    setIdsInscribir([]);
+    setCategoriaInscribir("");
+    setBusquedaInscribir("");
+    setIsInscribiendo(false);
   }
 
-  async function handleInscribirJugador(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  function abrirModalInscribir() {
+    setCategoriaInscribir(
+      categoriaFiltro !== "Todas" ? categoriaFiltro : ""
+    );
+    setIsModalInscribirOpen(true);
+    void cargarTodosLosJugadores();
+  }
 
-    const form = event.currentTarget;
-    const formData = new FormData(form);
-    const jugadorId = formData.get("jugador_id")?.toString();
+  function toggleJugadorInscribir(jugadorId: string) {
+    setIdsInscribir((prev) =>
+      prev.includes(jugadorId)
+        ? prev.filter((id) => id !== jugadorId)
+        : [...prev, jugadorId]
+    );
+  }
 
-    if (!jugadorId) return;
-
-    const { error } = await supabase.from("torneo_jugadores").insert({
-      torneo_id: torneoId,
-      jugador_id: jugadorId,
-    });
-
-    if (error) {
-      console.error("Error al inscribir jugador:", error.message);
+  function toggleTodosVisiblesInscribir() {
+    const idsVisibles = jugadoresDisponiblesFiltrados.map((j) => j.id);
+    const todosMarcados = idsVisibles.every((id) => idsInscribir.includes(id));
+    if (todosMarcados) {
+      setIdsInscribir((prev) => prev.filter((id) => !idsVisibles.includes(id)));
       return;
     }
+    setIdsInscribir((prev) => [...new Set([...prev, ...idsVisibles])]);
+  }
 
-    form.reset();
+  async function handleInscribirJugadores(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (idsInscribir.length === 0 || !categoriaInscribir) return;
+
+    setIsInscribiendo(true);
+
+    const idsYaEnTorneo = new Set(
+      inscriptos.map((inscripto) => inscripto.jugador.id)
+    );
+    const idsNuevos = idsInscribir.filter((id) => !idsYaEnTorneo.has(id));
+    const idsACruzar = idsInscribir.filter((id) => idsYaEnTorneo.has(id));
+
+    if (idsNuevos.length > 0) {
+      const { error } = await supabase.from("torneo_jugadores").insert(
+        idsNuevos.map((jugador_id) => ({
+          torneo_id: torneoId,
+          jugador_id,
+          categoria: categoriaInscribir,
+        }))
+      );
+      if (error) {
+        setIsInscribiendo(false);
+        console.error("Error al inscribir jugadores:", error.message);
+        toast.error(
+          error.message.toLowerCase().includes("categoria")
+            ? "Falta la columna categoria en inscripciones. Ejecutá el SQL de supabase/torneo-jugadores-categoria.sql."
+            : "No se pudieron inscribir los jugadores."
+        );
+        return;
+      }
+    }
+
+    if (idsACruzar.length > 0) {
+      const { error } = await supabase
+        .from("torneo_jugadores")
+        .update({ categoria: categoriaInscribir })
+        .eq("torneo_id", torneoId)
+        .in("jugador_id", idsACruzar);
+      if (error) {
+        setIsInscribiendo(false);
+        console.error("Error al cruzar jugadores de categoría:", error.message);
+        toast.error("No se pudo mover al jugador a esta categoría.");
+        return;
+      }
+    }
+
+    setIsInscribiendo(false);
+
+    toast.success(
+      idsInscribir.length === 1
+        ? "Jugador inscripto."
+        : `${idsInscribir.length} jugadores inscriptos.`
+    );
     cerrarModalInscribir();
     await cargarInscriptos();
   }
@@ -447,14 +808,20 @@ export function TorneoDetalleClient() {
     await cargarPartidos();
   }
 
-  // Delega el armado al motor (ranking + extremos + candado anti-duplicados).
+  // Delega el armado al motor (ranking + extremos + byes / W.O.).
   async function handleGenerarCruces() {
-    if (inscriptos.length < 2) return;
+    const jugadores = inscriptosFiltrados.map((inscripto) => ({
+      id: inscripto.jugador.id,
+      nombre_completo: inscripto.jugador.nombre_completo,
+      whatsapp: "",
+      categoria: categoriaDeCompetencia(inscripto),
+      genero: inscripto.jugador.genero,
+    }));
 
-    const idsInscriptos = new Set(inscriptos.map((i) => i.jugador.id));
-    const jugadores = todosLosJugadores.filter((jugador) =>
-      idsInscriptos.has(jugador.id)
-    );
+    if (jugadores.length < 2) {
+      toast.error("Seleccioná una categoría con al menos 2 inscriptos.");
+      return;
+    }
 
     setIsGenerandoCruces(true);
     try {
@@ -479,13 +846,26 @@ export function TorneoDetalleClient() {
   }
 
   async function handleGenerarCuadroFinal() {
+    if (!clasificacionCategoriaCompleta) {
+      toast.error(
+        "Cargá todos los resultados de clasificación de esta categoría antes de armar el cuadro."
+      );
+      return;
+    }
+
     setIsGenerandoCuadro(true);
     try {
-      const resultado = await generarCuadroFinal(torneoId);
+      const resultado = await generarCuadroFinal(
+        torneoId,
+        idsJugadoresFiltrados
+      );
 
       if (resultado.ok) {
+        const ronda = resultado.primeraFase
+          ? ` desde ${resultado.primeraFase}`
+          : "";
         toast.success(
-          `Cuadro final generado: ${resultado.partidosCreados} partidos (Octavos → Final).`
+          `Cuadro final generado${ronda}: ${resultado.partidosCreados} partidos.`
         );
         await cargarPartidos();
         router.refresh();
@@ -652,23 +1032,95 @@ export function TorneoDetalleClient() {
               </div>
             </header>
 
-            {/* Inscriptos */}
-            <section className="mb-8">
+            {/* Barra de control: género + categoría mandan toda la vista */}
+            <div className="mb-6 space-y-3 rounded-lg bg-[#1a1a1a] p-4">
+              <div className="inline-flex rounded-lg bg-background p-1">
+                {["Todos", "Masculino", "Femenino"].map((genero) => {
+                  const activo = generoFiltro === genero;
+                  return (
+                    <button
+                      key={genero}
+                      type="button"
+                      onClick={() => handleCambiarGeneroFiltro(genero)}
+                      className={`min-h-9 rounded-md px-3.5 py-1.5 text-xs font-semibold transition ${
+                        activo
+                          ? "bg-surface text-foreground shadow-sm"
+                          : "text-foreground/45 hover:text-foreground/70"
+                      }`}
+                    >
+                      {genero}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {categoriasInscriptos.map((categoria) => {
+                  const activa = categoriaFiltro === categoria;
+                  return (
+                    <button
+                      key={categoria}
+                      type="button"
+                      onClick={() => handleCambiarCategoriaFiltro(categoria)}
+                      className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
+                        activa
+                          ? "bg-accent text-white"
+                          : "border border-border bg-surface text-foreground/55 hover:text-foreground"
+                      }`}
+                    >
+                      {categoria}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Navegación por pestañas */}
+            <nav
+              className="mb-6 flex gap-1 overflow-x-auto border-b border-border"
+              aria-label="Secciones del torneo"
+            >
+              {pestanasVisibles.map(({ id, label }) => {
+                const activa = pestanaMostrada === id;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setPestanaActiva(id)}
+                    className={`shrink-0 border-b-2 px-4 py-3 text-sm font-semibold transition ${
+                      activa
+                        ? "border-accent text-foreground"
+                        : "border-transparent text-foreground/45 hover:text-foreground/70"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </nav>
+
+            {/* Pestaña: Jugadores Inscriptos */}
+            {pestanaMostrada === "jugadores" && (
+            <section>
               <div className="mb-4 flex items-center justify-between gap-3">
                 <h2 className="text-lg font-semibold text-foreground">
                   Jugadores inscriptos
                   <span className="ml-2 text-sm font-normal text-foreground/50">
-                    ({inscriptos.length})
+                    ({inscriptosFiltrados.length}
+                    {generoFiltro !== "Todos" || categoriaFiltro !== "Todas"
+                      ? ` de ${inscriptos.length}`
+                      : ""}
+                    )
                   </span>
                 </h2>
                 {isAdmin && (
                   <button
                     type="button"
-                    onClick={() => setIsModalInscribirOpen(true)}
+                    onClick={abrirModalInscribir}
                     className="inline-flex items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-hover active:scale-[0.98]"
                   >
                     <UserPlus size={16} />
-                    Inscribir Jugador
+                    Inscribir jugadores
                   </button>
                 )}
               </div>
@@ -681,6 +1133,10 @@ export function TorneoDetalleClient() {
                 ) : inscriptos.length === 0 ? (
                   <p className="px-6 py-10 text-center text-sm text-foreground/50">
                     Todavía no hay jugadores inscriptos en este torneo.
+                  </p>
+                ) : inscriptosFiltrados.length === 0 ? (
+                  <p className="px-6 py-10 text-center text-sm text-foreground/50">
+                    No hay inscriptos con esos filtros.
                   </p>
                 ) : (
                   <div className="overflow-x-auto">
@@ -704,7 +1160,7 @@ export function TorneoDetalleClient() {
                         </tr>
                       </thead>
                       <tbody>
-                        {inscriptos.map((inscripto) => (
+                        {inscriptosFiltrados.map((inscripto) => (
                           <tr
                             key={inscripto.id}
                             className="border-b border-border last:border-0 hover:bg-background/40"
@@ -714,8 +1170,14 @@ export function TorneoDetalleClient() {
                             </td>
                             <td className="px-4 py-3 sm:px-6">
                               <span className="inline-block rounded-full border border-border px-2.5 py-1 text-xs font-semibold text-foreground/80">
-                                {inscripto.jugador.categoria}
+                                {categoriaDeCompetencia(inscripto)}
                               </span>
+                              {categoriaDeCompetencia(inscripto) !==
+                              inscripto.jugador.categoria ? (
+                                <span className="ml-2 text-[11px] text-foreground/40">
+                                  ficha {inscripto.jugador.categoria}
+                                </span>
+                              ) : null}
                             </td>
                             <td className="px-4 py-3 text-foreground/70 sm:px-6">
                               {inscripto.jugador.genero}
@@ -744,8 +1206,61 @@ export function TorneoDetalleClient() {
                 )}
               </div>
             </section>
+            )}
 
-            {/* Partidos / Llaves */}
+            {/* Pestaña: Fase de Grupos */}
+            {pestanaMostrada === "grupos" &&
+              formatoTorneo === "grupos_eliminatoria" &&
+              (categoriaFiltro === "Todas" ? (
+                <EmptyStateCategoria />
+              ) : (
+              <section className="flex min-h-[280px] flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-surface px-6 py-16 text-center">
+                <p className="text-base font-semibold text-foreground/70">
+                  Gestión de grupos (Próximamente)
+                </p>
+                <p className="mt-2 max-w-sm text-sm text-foreground/40">
+                  Cuadro de {categoriaFiltro}
+                  {generoFiltro !== "Todos" ? ` · ${generoFiltro}` : ""}.
+                </p>
+              </section>
+            ))}
+
+            {/* Pestaña: Fase de Clasificación */}
+            {pestanaMostrada === "clasificacion" &&
+              formatoTorneo === "clasificacion_eliminatoria" &&
+              (categoriaFiltro === "Todas" ? (
+                <EmptyStateCategoria />
+              ) : (
+              <FaseClasificacionTab
+                key={`${generoFiltro}-${categoriaFiltro}`}
+                torneoId={torneoId}
+                categoriaLabel={`${categoriaFiltro}${
+                  generoFiltro !== "Todos" ? ` · ${generoFiltro}` : ""
+                }`}
+                isAdmin={isAdmin}
+                isLoadingPartidos={isLoadingPartidos}
+                inscriptos={inscriptosFiltrados.map((inscripto) => ({
+                  id: inscripto.jugador.id,
+                  nombre_completo: inscripto.jugador.nombre_completo,
+                  whatsapp: "",
+                  categoria: categoriaDeCompetencia(inscripto),
+                  genero: inscripto.jugador.genero,
+                }))}
+                partidosClasificacion={partidosClasificacionFiltrados}
+                crucesDraft={crucesDraft}
+                setCrucesDraft={setCrucesDraft}
+                onGuardados={async () => {
+                  await cargarPartidos();
+                  router.refresh();
+                }}
+              />
+            ))}
+
+            {/* Pestaña: Cuadro Eliminatorio */}
+            {pestanaMostrada === "cuadro" &&
+              (categoriaFiltro === "Todas" ? (
+                <EmptyStateCategoria />
+              ) : (
             <section>
               <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <h2 className="text-lg font-semibold text-foreground">
@@ -773,18 +1288,19 @@ export function TorneoDetalleClient() {
                       </button>
                     )}
 
-                    {partidos.some((p) => p.fase === "Clasificacion") &&
-                      !partidos.some(
-                        (p) =>
-                          p.fase === "Octavos de Final" ||
-                          p.fase === "Cuartos de Final" ||
-                          p.fase === "Semifinal" ||
-                          p.fase === "Final"
-                      ) && (
+                    {partidosClasificacionFiltrados.length > 0 &&
+                      !hayCuadroEliminatorio(partidosCuadroCategoria) && (
                         <button
                           type="button"
                           onClick={handleGenerarCuadroFinal}
-                          disabled={isGenerandoCuadro}
+                          disabled={
+                            isGenerandoCuadro || !clasificacionCategoriaCompleta
+                          }
+                          title={
+                            !clasificacionCategoriaCompleta
+                              ? "Cargá todos los resultados de clasificación primero"
+                              : undefined
+                          }
                           className="inline-flex items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-hover active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           <Trophy size={16} />
@@ -793,155 +1309,121 @@ export function TorneoDetalleClient() {
                             : "Generar Cuadro Final"}
                         </button>
                       )}
+
+                    {hayCuadroEliminatorio(partidosCuadroCategoria) && (
+                      <button
+                        type="button"
+                        onClick={() => setIsModalEditarCuadroOpen(true)}
+                        disabled={partidosDeRondaActiva.length === 0}
+                        className="inline-flex items-center justify-center gap-2 rounded-lg border border-border bg-surface px-4 py-2.5 text-sm font-semibold text-foreground/80 transition hover:bg-background hover:text-foreground active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <Pencil size={16} />
+                        Editar Cruces Manualmente
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
 
-              {!isLoadingPartidos && hayCuadroEliminatorio(partidos) && (
-                <div className="mb-6">
-                  <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-foreground/50">
-                    Cuadro eliminatorio
-                  </h3>
-                  <CuadroTorneo partidos={partidos} />
-                </div>
-              )}
-
-              <div className="overflow-hidden rounded-2xl border border-border bg-surface">
-                {isLoadingPartidos ? (
-                  <p className="px-6 py-10 text-center text-sm text-foreground/50">
-                    Cargando...
-                  </p>
-                ) : partidos.length === 0 ? (
-                  <p className="px-6 py-10 text-center text-sm text-foreground/50">
-                    Todavía no se generaron partidos para este torneo.
-                  </p>
-                ) : (
-                  partidos.map((partido) => (
-                    <div
-                      key={partido.id}
-                      className="flex flex-col gap-3 border-b border-border p-4 last:border-0 sm:flex-row sm:items-center sm:justify-between sm:px-6"
-                    >
-                      <div className="flex flex-col gap-1">
-                        <span className="text-[11px] font-semibold uppercase tracking-wide text-foreground/40">
-                          {partido.fase}
-                        </span>
-                        <div className="flex flex-wrap items-center gap-2 text-sm">
-                          <span
-                            className={`font-medium ${
-                              partido.ganador_id === partido.jugador_1?.id
-                                ? "text-accent"
-                                : "text-foreground"
-                            }`}
-                          >
-                            {partido.jugador_1?.nombre_completo ?? "A definir"}
-                          </span>
-                          <span className="text-xs text-foreground/40">
-                            vs
-                          </span>
-                          <span
-                            className={`font-medium ${
-                              partido.ganador_id === partido.jugador_2?.id
-                                ? "text-accent"
-                                : "text-foreground"
-                            }`}
-                          >
-                            {partido.jugador_2?.nombre_completo ?? "A definir"}
-                          </span>
-                        </div>
-
-                        {partido.fecha_horario ? (
-                          <div className="flex flex-wrap items-center gap-3 text-xs text-foreground/50">
-                            <span className="inline-flex items-center gap-1">
-                              <Calendar size={12} />
-                              {formatFechaHorario(partido.fecha_horario)}
-                            </span>
-                            <span className="inline-flex items-center gap-1">
-                              <MapPin size={12} />
-                              {partido.cancha ?? "Cancha a confirmar"}
-                            </span>
-                          </div>
-                        ) : (
-                          <span className="inline-flex w-fit items-center rounded-full bg-foreground/10 px-2 py-0.5 text-[11px] font-semibold text-foreground/50">
-                            A confirmar
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-3">
-                        {partido.resultado && (
-                          <span className="text-sm text-foreground/60">
-                            {partido.resultado}
-                          </span>
-                        )}
-                        <span
-                          className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${ESTADO_PARTIDO_BADGE_STYLES[partido.estado]}`}
+              {hayCuadroEliminatorio(partidosCuadroCategoria) &&
+                rondasCuadroDisponibles.length > 0 && (
+                  <div
+                    className="mb-6 flex flex-wrap gap-2"
+                    role="tablist"
+                    aria-label="Rondas del cuadro"
+                  >
+                    {rondasCuadroDisponibles.map((fase) => {
+                      const activa = rondaCuadroActiva === fase;
+                      return (
+                        <button
+                          key={fase}
+                          type="button"
+                          role="tab"
+                          aria-selected={activa}
+                          onClick={() => setRondaCuadroManual(fase)}
+                          className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
+                            activa
+                              ? "bg-accent text-white"
+                              : "border border-border bg-surface text-foreground/55 hover:text-foreground"
+                          }`}
                         >
-                          {partido.estado}
-                        </span>
-                        {isAdmin &&
-                          partido.estado === "Pendiente" &&
-                          partido.jugador_1 &&
-                          partido.jugador_2 && (
-                            <button
-                              type="button"
-                              onClick={() => abrirModalResultado(partido)}
-                              className="min-h-11 shrink-0 rounded-lg border border-border px-3 py-2 text-xs font-semibold text-foreground/80 transition hover:bg-background hover:text-foreground"
-                            >
-                              Cargar Resultado
-                            </button>
-                          )}
-                        {isAdmin && partido.estado === "Finalizado" && (
-                          <button
-                            type="button"
-                            onClick={() => abrirModalResultado(partido)}
-                            className="min-h-11 shrink-0 rounded-lg border border-border px-3 py-2 text-xs font-semibold text-foreground/80 transition hover:bg-background hover:text-foreground"
-                          >
-                            Editar Resultado
-                          </button>
-                        )}
-                        {isAdmin && (
-                          <div className="flex shrink-0 items-center gap-1">
-                            <button
-                              type="button"
-                              onClick={() => abrirModalEditarPartido(partido)}
-                              aria-label="Editar cruce"
-                              className="inline-flex items-center justify-center rounded-lg p-2 text-foreground/50 transition hover:bg-foreground/10 hover:text-foreground"
-                            >
-                              <Pencil size={16} />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleEliminarPartido(partido)}
-                              aria-label="Eliminar partido"
-                              className="inline-flex items-center justify-center rounded-lg p-2 text-red-500/70 transition hover:bg-red-500/10 hover:text-red-500"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))
+                          {RONDA_CUADRO_LABELS[fase] ?? fase}
+                        </button>
+                      );
+                    })}
+                  </div>
                 )}
-              </div>
+
+              {isLoadingPartidos ? (
+                <div className="rounded-2xl border border-[#3f3f46] bg-[#1a1a1a] px-6 py-16 text-center text-sm text-white/50">
+                  Cargando...
+                </div>
+              ) : !hayCuadroEliminatorio(partidosCuadroCategoria) ? (
+                <div className="rounded-2xl border border-[#3f3f46] bg-[#1a1a1a] px-6 py-16 text-center text-sm text-white/50">
+                  Todavía no se generó el cuadro eliminatorio para esta
+                  categoría.
+                </div>
+              ) : (
+                <CuadroLlaves
+                  partidos={partidosCuadroCategoria
+                    .map((ronda) =>
+                      partidos.find((partido) => partido.id === ronda.id)
+                    )
+                    .filter((partido): partido is PartidoConJugadores =>
+                      Boolean(partido)
+                    )}
+                  rondaResaltada={rondaCuadroActiva}
+                  isAdmin={isAdmin}
+                  onCargarResultado={(card) => {
+                    const original = partidos.find(
+                      (partido) => partido.id === card.id
+                    );
+                    if (original) abrirModalResultado(original);
+                  }}
+                  onProgramarPartido={(card) => {
+                    const original = partidos.find(
+                      (partido) => partido.id === card.id
+                    );
+                    if (original) setPartidoProgramando(original);
+                  }}
+                />
+              )}
             </section>
+            ))}
           </>
         )}
       </div>
 
-      {/* Modal: Inscribir Jugador */}
+      {isModalEditarCuadroOpen && rondaCuadroActiva && (
+        <ModalEditarPrimeraRonda
+          key={`${rondaCuadroActiva}-${partidosDeRondaActiva.map((partido) => partido.id).join("-")}`}
+          fase={
+            RONDA_CUADRO_LABELS[rondaCuadroActiva] ?? rondaCuadroActiva
+          }
+          partidos={partidosDeRondaActiva}
+          jugadoresElegibles={jugadoresElegiblesCuadro}
+          idsRondasPosteriores={idsRondasPosterioresCuadro}
+          onCerrar={() => setIsModalEditarCuadroOpen(false)}
+          onGuardado={async () => {
+            await cargarPartidos();
+            router.refresh();
+          }}
+        />
+      )}
+
+      {/* Modal: Inscribir jugadores (múltiples) */}
       {isModalInscribirOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4"
           onClick={cerrarModalInscribir}
         >
           <div
-            className="w-full max-w-md rounded-2xl border border-border bg-surface p-6 shadow-2xl shadow-black/40 sm:p-8"
+            className="flex max-h-[85vh] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-2xl shadow-black/40"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="mb-6 flex items-center justify-between">
+            <div className="flex shrink-0 items-center justify-between px-6 pt-6 sm:px-8 sm:pt-8">
               <h2 className="text-lg font-semibold text-foreground">
-                Inscribir Jugador
+                Inscribir jugadores
               </h2>
               <button
                 type="button"
@@ -953,41 +1435,120 @@ export function TorneoDetalleClient() {
               </button>
             </div>
 
-            <form onSubmit={handleInscribirJugador} className="space-y-5">
-              <div className="space-y-1.5">
-                <label
-                  htmlFor="jugador_id"
-                  className="block text-sm font-medium text-foreground/80"
-                >
-                  Jugador
-                </label>
-                <select
-                  id="jugador_id"
-                  name="jugador_id"
-                  required
-                  defaultValue=""
-                  disabled={jugadoresDisponibles.length === 0}
-                  className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-foreground outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/30 disabled:opacity-50"
-                >
-                  <option value="" disabled>
-                    {jugadoresDisponibles.length === 0
-                      ? "No hay jugadores disponibles"
-                      : "Seleccioná un jugador"}
-                  </option>
-                  {jugadoresDisponibles.map((jugador) => (
-                    <option key={jugador.id} value={jugador.id}>
-                      {jugador.nombre_completo} · {jugador.categoria}
-                    </option>
-                  ))}
-                </select>
+            <form
+              onSubmit={handleInscribirJugadores}
+              className="flex min-h-0 flex-1 flex-col"
+            >
+              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-6 py-5 sm:px-8">
+                <div className="space-y-1.5">
+                  <label
+                    htmlFor="categoria-inscribir"
+                    className="block text-xs font-medium text-foreground/50"
+                  >
+                    Inscribir en categoría
+                  </label>
+                  <select
+                    id="categoria-inscribir"
+                    required
+                    value={categoriaInscribir}
+                    onChange={(event) =>
+                      setCategoriaInscribir(event.target.value)
+                    }
+                    className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-sm text-foreground outline-none transition [color-scheme:dark] focus:border-[#ea580c] focus:ring-2 focus:ring-[#ea580c]/30"
+                  >
+                    <option value="">Elegí una categoría</option>
+                    {CATEGORIAS_JUGADOR.map((categoria) => (
+                      <option key={categoria} value={categoria}>
+                        {categoria}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <input
+                  type="search"
+                  value={busquedaInscribir}
+                  onChange={(event) => setBusquedaInscribir(event.target.value)}
+                  placeholder="Buscar por nombre o categoría de ficha..."
+                  disabled={isLoadingJugadores}
+                  className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-sm text-foreground outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/30 disabled:opacity-50"
+                />
+
+                {isLoadingJugadores ? (
+                  <p className="py-8 text-center text-sm text-foreground/50">
+                    Cargando jugadores del club...
+                  </p>
+                ) : jugadoresDisponibles.length === 0 ? (
+                  <p className="py-8 text-center text-sm text-foreground/50">
+                    No hay más jugadores para inscribir en esta categoría.
+                  </p>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs text-foreground/50">
+                        {idsInscribir.length === 0
+                          ? "Elegí uno o más jugadores"
+                          : `${idsInscribir.length} seleccionado${idsInscribir.length === 1 ? "" : "s"}`}
+                      </p>
+                      {jugadoresDisponiblesFiltrados.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={toggleTodosVisiblesInscribir}
+                          className="text-xs font-semibold text-accent hover:text-accent-hover"
+                        >
+                          {jugadoresDisponiblesFiltrados.every((j) =>
+                            idsInscribir.includes(j.id)
+                          )
+                            ? "Desmarcar visibles"
+                            : "Seleccionar visibles"}
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="max-h-72 overflow-y-auto rounded-xl border border-border">
+                      {jugadoresDisponiblesFiltrados.length === 0 ? (
+                        <p className="px-4 py-8 text-center text-sm text-foreground/50">
+                          No hay coincidencias.
+                        </p>
+                      ) : (
+                        jugadoresDisponiblesFiltrados.map((jugador) => {
+                          const marcado = idsInscribir.includes(jugador.id);
+                          return (
+                            <label
+                              key={jugador.id}
+                              className={`flex min-h-11 cursor-pointer items-center gap-3 border-b border-border px-4 py-2.5 last:border-0 transition hover:bg-background/60 ${
+                                marcado ? "bg-accent/10" : ""
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={marcado}
+                                onChange={() =>
+                                  toggleJugadorInscribir(jugador.id)
+                                }
+                                className="h-4 w-4 shrink-0 accent-[#d9682f]"
+                              />
+                              <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+                                {jugador.nombre_completo}
+                              </span>
+                              <span className="shrink-0 rounded-full border border-border px-2 py-0.5 text-[11px] font-semibold text-foreground/70">
+                                {jugador.categoria}
+                              </span>
+                            </label>
+                          );
+                        })
+                      )}
+                    </div>
+                  </>
+                )}
+
                 <p className="text-xs text-foreground/40">
-                  Se muestran todos los jugadores registrados, sin filtrar
-                  por categoría, para poder fusionar cuadros cuando haga
-                  falta. Solo se ocultan los que ya están inscriptos acá.
+                  Lista completa del club: podés inscribir a cualquiera en
+                  esta categoría, aunque su ficha sea de otra.
                 </p>
               </div>
 
-              <div className="flex gap-3 pt-2">
+              <div className="flex shrink-0 gap-3 border-t border-border px-6 py-4 sm:px-8">
                 <button
                   type="button"
                   onClick={cerrarModalInscribir}
@@ -997,15 +1558,34 @@ export function TorneoDetalleClient() {
                 </button>
                 <button
                   type="submit"
-                  disabled={jugadoresDisponibles.length === 0}
+                  disabled={
+                    idsInscribir.length === 0 ||
+                    !categoriaInscribir ||
+                    isInscribiendo
+                  }
                   className="flex-1 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-hover active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  Inscribir
+                  {isInscribiendo
+                    ? "Inscribiendo..."
+                    : idsInscribir.length <= 1
+                      ? "Inscribir"
+                      : `Inscribir ${idsInscribir.length}`}
                 </button>
               </div>
             </form>
           </div>
         </div>
+      )}
+
+      {partidoProgramando && (
+        <ModalProgramarPartido
+          partido={partidoProgramando}
+          onCerrar={() => setPartidoProgramando(null)}
+          onGuardado={async () => {
+            await cargarPartidos();
+            router.refresh();
+          }}
+        />
       )}
 
       {/* Modal: Cargar Resultado */}
@@ -1015,7 +1595,7 @@ export function TorneoDetalleClient() {
           onClick={cerrarModalResultado}
         >
           <div
-            className="w-full max-w-md rounded-2xl border border-border bg-surface p-6 shadow-2xl shadow-black/40 sm:p-8"
+            className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-border bg-surface p-6 shadow-2xl shadow-black/40 sm:p-8"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="mb-2 flex items-center justify-between">
@@ -1156,7 +1736,7 @@ export function TorneoDetalleClient() {
                 <button
                   type="submit"
                   disabled={!puedeGuardarResultado}
-                  className="flex-1 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-hover active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+                  className="flex-1 rounded-lg bg-[#ea580c] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#c2410c] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Guardar resultado
                 </button>

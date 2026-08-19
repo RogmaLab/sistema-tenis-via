@@ -1,9 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type FormEvent,
+} from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  Archive,
+  ArrowLeft,
   Lock,
   MoreVertical,
   Pencil,
@@ -11,15 +19,32 @@ import {
   Trophy,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { CATEGORIAS_JUGADOR, type Torneo } from "@/lib/types";
-import { ESTADO_BADGE_STYLES, ESTADO_LABELS, calcularEstadoVisual } from "@/lib/torneo-estado";
 import {
-  formatFecha,
-  formatFechaHorario,
+  CATEGORIAS_JUGADOR,
+  FORMATOS_TORNEO,
+  FORMATO_TORNEO_LABELS,
+  type FormatoTorneo,
+  type Torneo,
+  normalizarFormatoTorneo,
+} from "@/lib/types";
+import {
+  ESTADO_BADGE_STYLES,
+  ESTADO_LABELS,
+  calcularEstadoVisual,
+} from "@/lib/torneo-estado";
+import {
   fromDatetimeLocalValue,
   toDatetimeLocalValue,
 } from "@/lib/datetime";
 import { useAuth } from "@/components/auth-provider";
+
+const MS_SIETE_DIAS = 7 * 24 * 60 * 60 * 1000;
+
+/** Auto-archivo visual: finalizado con fecha_fin hace más de 7 días. */
+function estaArchivadoVisualmente(torneo: Torneo, ahoraMs = Date.now()) {
+  if (torneo.estado !== "finalizado" || !torneo.fecha_fin) return false;
+  return new Date(torneo.fecha_fin).getTime() < ahoraMs - MS_SIETE_DIAS;
+}
 
 export function TorneosClient() {
   const router = useRouter();
@@ -31,6 +56,7 @@ export function TorneosClient() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [torneoEditando, setTorneoEditando] = useState<Torneo | null>(null);
   const [menuAbiertoId, setMenuAbiertoId] = useState<string | null>(null);
+  const [mostrarArchivados, setMostrarArchivados] = useState(false);
 
   // Fetcher "puro": solo consulta Supabase y devuelve el resultado (o
   // `null` si hubo error), sin tocar ningún estado. Sirve de base tanto
@@ -122,6 +148,9 @@ export function TorneosClient() {
     const categorias = formData
       .getAll("categorias")
       .map((valor) => valor.toString());
+    const formato = normalizarFormatoTorneo(
+      formData.get("formato")?.toString()
+    );
 
     if (!nombre || !fechaInicio) return;
     if (categorias.length === 0) return;
@@ -135,6 +164,7 @@ export function TorneosClient() {
           fecha_apertura_inscripcion: fechaAperturaInscripcion,
           fecha_cierre_inscripcion: fechaCierreInscripcion,
           categorias,
+          formato,
         })
         .eq("id", torneoEditando.id);
 
@@ -152,8 +182,7 @@ export function TorneosClient() {
         fecha_apertura_inscripcion: fechaAperturaInscripcion,
         fecha_cierre_inscripcion: fechaCierreInscripcion,
         categorias,
-        // El formato de juego se define más adelante, al cerrar la inscripción.
-        formato: "Por definir",
+        formato,
         // Un torneo recién creado siempre arranca abriendo la inscripción.
         estado: "inscripcion",
       });
@@ -212,6 +241,18 @@ export function TorneosClient() {
     router.refresh();
   }
 
+  const { torneosVisibles, torneosArchivados } = useMemo(() => {
+    const visibles: Torneo[] = [];
+    const archivados: Torneo[] = [];
+    for (const torneo of torneos) {
+      if (estaArchivadoVisualmente(torneo)) archivados.push(torneo);
+      else visibles.push(torneo);
+    }
+    return { torneosVisibles: visibles, torneosArchivados: archivados };
+  }, [torneos]);
+
+  const listaActual = mostrarArchivados ? torneosArchivados : torneosVisibles;
+
   return (
     <main className="min-h-screen bg-background px-4 py-8 sm:px-6 lg:px-10">
       <div className="mx-auto max-w-5xl">
@@ -219,23 +260,55 @@ export function TorneosClient() {
         <header className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-              Gestión de Torneos
+              {mostrarArchivados
+                ? "Historial de torneos archivados"
+                : "Gestión de Torneos"}
             </h1>
             <p className="mt-1 text-sm text-foreground/60">
-              {torneos.length} torneos creados
+              {mostrarArchivados
+                ? `${torneosArchivados.length} torneo${torneosArchivados.length === 1 ? "" : "s"} archivado${torneosArchivados.length === 1 ? "" : "s"}`
+                : `${torneosVisibles.length} torneo${torneosVisibles.length === 1 ? "" : "s"} activo${torneosVisibles.length === 1 ? "" : "s"}`}
             </p>
           </div>
 
-          {isAdmin && (
-            <button
-              type="button"
-              onClick={abrirModalNuevo}
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-hover active:scale-[0.98] sm:w-auto"
-            >
-              <span className="text-lg leading-none">+</span>
-              Nuevo Torneo
-            </button>
-          )}
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            {mostrarArchivados ? (
+              <button
+                type="button"
+                onClick={() => setMostrarArchivados(false)}
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border px-4 py-2.5 text-sm font-semibold text-foreground/80 transition hover:bg-surface"
+              >
+                <ArrowLeft size={16} />
+                Volver a torneos activos
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setMostrarArchivados(true)}
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border px-4 py-2.5 text-sm font-semibold text-foreground/80 transition hover:bg-surface"
+                >
+                  <Archive size={16} />
+                  Ver historial de torneos archivados
+                  {torneosArchivados.length > 0 && (
+                    <span className="rounded-full bg-foreground/10 px-2 py-0.5 text-xs font-semibold text-foreground/60">
+                      {torneosArchivados.length}
+                    </span>
+                  )}
+                </button>
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={abrirModalNuevo}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-hover active:scale-[0.98] sm:w-auto"
+                  >
+                    <span className="text-lg leading-none">+</span>
+                    Nuevo Torneo
+                  </button>
+                )}
+              </>
+            )}
+          </div>
         </header>
 
         {/* Listado de torneos */}
@@ -243,138 +316,113 @@ export function TorneosClient() {
           <p className="rounded-2xl border border-border bg-surface px-6 py-10 text-center text-sm text-foreground/50">
             Cargando...
           </p>
-        ) : torneos.length === 0 ? (
+        ) : listaActual.length === 0 ? (
           <div className="flex min-h-[240px] flex-col items-center justify-center gap-4 rounded-2xl border border-dashed border-border bg-surface p-10 text-center">
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-accent/15">
-              <Trophy size={22} className="text-accent" />
+              {mostrarArchivados ? (
+                <Archive size={22} className="text-accent" />
+              ) : (
+                <Trophy size={22} className="text-accent" />
+              )}
             </div>
             <p className="text-sm text-foreground/60">
-              {isAdmin
-                ? 'Todavía no creaste ningún torneo. Arrancá con "Nuevo Torneo".'
-                : "Todavía no hay torneos publicados."}
+              {mostrarArchivados
+                ? "No hay torneos archivados todavía."
+                : isAdmin
+                  ? 'Todavía no creaste ningún torneo. Arrancá con "Nuevo Torneo".'
+                  : "Todavía no hay torneos publicados."}
             </p>
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {torneos.map((torneo) => {
+            {listaActual.map((torneo) => {
               const estadoVisual = calcularEstadoVisual(torneo);
 
               return (
-              <div
-                key={torneo.id}
-                className="flex flex-col gap-4 rounded-2xl border border-border bg-surface p-5 transition hover:border-accent/50"
-              >
-                <div className="flex items-start justify-between gap-3">
+                <div
+                  key={torneo.id}
+                  className="flex items-start gap-3 rounded-2xl border border-border bg-surface p-6 transition hover:border-accent/50"
+                >
                   <Link
                     href={`/torneos/${torneo.id}`}
-                    className="min-w-0 flex-1"
+                    className="flex min-w-0 flex-1 flex-col"
                   >
-                    <h2 className="break-words text-base font-semibold leading-snug text-foreground transition hover:text-accent">
+                    <h2 className="break-words text-lg font-bold leading-snug text-foreground transition hover:text-accent">
                       {torneo.nombre}
                     </h2>
-                  </Link>
 
-                  <div className="flex shrink-0 items-center gap-1.5">
                     <span
-                      className={`rounded-full px-2.5 py-1 text-xs font-semibold ${ESTADO_BADGE_STYLES[estadoVisual]}`}
+                      className={`mt-2 w-fit rounded-full px-2.5 py-1 text-xs font-semibold ${ESTADO_BADGE_STYLES[estadoVisual]}`}
                     >
                       {ESTADO_LABELS[estadoVisual]}
                     </span>
 
-                    {isAdmin && (
-                      <div className="relative">
-                        <button
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setMenuAbiertoId((prev) =>
-                              prev === torneo.id ? null : torneo.id
-                            );
-                          }}
-                          aria-label="Más opciones"
-                          className="rounded-lg p-1.5 text-foreground/50 transition hover:bg-background hover:text-foreground"
+                    <div className="mt-4 flex flex-wrap gap-1.5">
+                      {torneo.categorias.map((categoria) => (
+                        <span
+                          key={categoria}
+                          className="inline-block rounded-full border border-border px-2.5 py-1 text-xs font-semibold text-foreground/80"
                         >
-                          <MoreVertical size={16} />
-                        </button>
+                          {categoria}
+                        </span>
+                      ))}
+                    </div>
+                  </Link>
 
-                        {menuAbiertoId === torneo.id && (
-                          <div
-                            onClick={(event) => event.stopPropagation()}
-                            className="absolute right-0 top-full z-20 mt-1 w-56 overflow-hidden rounded-lg border border-border bg-surface shadow-xl shadow-black/40"
+                  {isAdmin && (
+                    <div className="relative shrink-0">
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setMenuAbiertoId((prev) =>
+                            prev === torneo.id ? null : torneo.id
+                          );
+                        }}
+                        aria-label="Más opciones"
+                        className="-mr-1 -mt-1 rounded-lg p-2 text-foreground/50 transition hover:bg-background hover:text-foreground"
+                      >
+                        <MoreVertical size={18} />
+                      </button>
+
+                      {menuAbiertoId === torneo.id && (
+                        <div
+                          onClick={(event) => event.stopPropagation()}
+                          className="absolute right-0 top-full z-20 mt-1 w-56 overflow-hidden rounded-lg border border-border bg-surface shadow-xl shadow-black/40"
+                        >
+                          <button
+                            type="button"
+                            onClick={() => abrirModalEdicion(torneo)}
+                            className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-foreground/80 transition hover:bg-background hover:text-foreground"
                           >
+                            <Pencil size={14} />
+                            Editar
+                          </button>
+                          {estadoVisual === "inscripcion" && (
                             <button
                               type="button"
-                              onClick={() => abrirModalEdicion(torneo)}
+                              onClick={() =>
+                                handleCerrarInscripcionManualmente(torneo)
+                              }
                               className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-foreground/80 transition hover:bg-background hover:text-foreground"
                             >
-                              <Pencil size={14} />
-                              Editar
+                              <Lock size={14} />
+                              Cerrar inscripción manualmente
                             </button>
-                            {estadoVisual === "inscripcion" && (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  handleCerrarInscripcionManualmente(torneo)
-                                }
-                                className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-foreground/80 transition hover:bg-background hover:text-foreground"
-                              >
-                                <Lock size={14} />
-                                Cerrar inscripción manualmente
-                              </button>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => handleEliminarTorneo(torneo.id)}
-                              className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-red-500/80 transition hover:bg-red-500/10 hover:text-red-500"
-                            >
-                              <Trash2 size={14} />
-                              Eliminar
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleEliminarTorneo(torneo.id)}
+                            className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-red-500/80 transition hover:bg-red-500/10 hover:text-red-500"
+                          >
+                            <Trash2 size={14} />
+                            Eliminar
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-
-                <Link
-                  href={`/torneos/${torneo.id}`}
-                  className="-mt-1 flex flex-1 flex-col gap-4"
-                >
-                  <p className="text-sm text-foreground/60">
-                    Desde {formatFecha(torneo.fecha_inicio)}
-                    {torneo.fecha_fin
-                      ? ` — ${formatFecha(torneo.fecha_fin)}`
-                      : ""}
-                  </p>
-
-                  <div className="flex flex-wrap gap-1.5">
-                    {torneo.categorias.map((categoria) => (
-                      <span
-                        key={categoria}
-                        className="inline-block rounded-full border border-border px-2.5 py-1 text-xs font-semibold text-foreground/80"
-                      >
-                        {categoria}
-                      </span>
-                    ))}
-                  </div>
-
-                  <p className="mt-auto text-xs text-foreground/40">
-                    {torneo.categorias.length}{" "}
-                    {torneo.categorias.length === 1
-                      ? "categoría habilitada"
-                      : "categorías habilitadas"}{" "}
-                    · {ESTADO_LABELS[estadoVisual]}
-                  </p>
-
-                  {estadoVisual === "inscripcion" &&
-                    torneo.fecha_cierre_inscripcion && (
-                      <p className="text-xs text-foreground/40">
-                        Cierra: {formatFechaHorario(torneo.fecha_cierre_inscripcion)}
-                      </p>
-                    )}
-                </Link>
-              </div>
               );
             })}
           </div>
@@ -525,6 +573,34 @@ export function TorneosClient() {
                   </div>
                   <p className="text-xs text-foreground/40">
                     Elegí al menos una categoría.
+                  </p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label
+                    htmlFor="formato"
+                    className="block text-sm font-medium text-foreground/80"
+                  >
+                    Formato del Torneo
+                  </label>
+                  <select
+                    id="formato"
+                    name="formato"
+                    required
+                    defaultValue={normalizarFormatoTorneo(
+                      torneoEditando?.formato
+                    )}
+                    className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-foreground outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/30"
+                  >
+                    {FORMATOS_TORNEO.map((formato) => (
+                      <option key={formato} value={formato}>
+                        {FORMATO_TORNEO_LABELS[formato]}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-foreground/40">
+                    Define las pestañas y fases que se van a mostrar en el
+                    detalle del torneo.
                   </p>
                 </div>
               </div>

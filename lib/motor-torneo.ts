@@ -1,25 +1,19 @@
 import { createClient } from "@/lib/supabase/client";
 import type { Jugador } from "@/lib/types";
-
-// Misma escala de puntos que usa /ranking (ver app/ranking/page.tsx).
-const PUNTOS_POR_PARTICIPACION = 1;
-const PUNTOS_POR_PARTIDO_GANADO = 3;
-const PUNTOS_BONUS_FINALISTA = 5;
-const PUNTOS_BONUS_CAMPEON = 10;
-const FASE_FINAL = "Final";
+import {
+  calcularBonusFinales,
+  contarVictoriasRanking,
+  puntajeDesdeConteos,
+  type PartidoParaRanking,
+  type PuntajeRanking,
+} from "@/lib/motor-ranking";
 
 export type ResultadoGeneracionCruces = {
   ok: true;
   partidosCreados: number;
+  primeraFase?: string;
 };
 
-interface PuntajeRanking {
-  puntos: number;
-  partidosGanados: number;
-}
-
-// Calcula puntos y victorias para los jugadores indicados, con las mismas
-// reglas del ranking general (participación + victorias + bonus de Final).
 async function obtenerPuntajesRanking(
   jugadorIds: string[]
 ): Promise<Map<string, PuntajeRanking>> {
@@ -30,7 +24,7 @@ async function obtenerPuntajesRanking(
     supabase.from("torneo_jugadores").select("jugador_id"),
     supabase
       .from("partidos")
-      .select("ganador_id, fase, jugador_1_id, jugador_2_id")
+      .select("ganador_id, fase, jugador_1_id, jugador_2_id, resultado")
       .eq("estado", "Finalizado"),
   ]);
 
@@ -52,54 +46,75 @@ async function obtenerPuntajesRanking(
     participaciones.set(id, (participaciones.get(id) ?? 0) + 1);
   }
 
-  const victorias = new Map<string, number>();
-  const bonus = new Map<string, number>();
-
-  for (const partido of partidosFinalizadosResult.data ?? []) {
-    const ganadorId = partido.ganador_id as string | null;
-    if (ganadorId && ids.has(ganadorId)) {
-      victorias.set(ganadorId, (victorias.get(ganadorId) ?? 0) + 1);
-    }
-
-    if (partido.fase !== FASE_FINAL || !ganadorId) continue;
-
-    if (ids.has(ganadorId)) {
-      bonus.set(ganadorId, (bonus.get(ganadorId) ?? 0) + PUNTOS_BONUS_CAMPEON);
-    }
-
-    const j1 = partido.jugador_1_id as string | null;
-    const j2 = partido.jugador_2_id as string | null;
-    const perdedorId =
-      j1 === ganadorId ? j2 : j2 === ganadorId ? j1 : null;
-
-    if (perdedorId && ids.has(perdedorId)) {
-      bonus.set(
-        perdedorId,
-        (bonus.get(perdedorId) ?? 0) + PUNTOS_BONUS_FINALISTA
-      );
-    }
-  }
+  const partidos = (partidosFinalizadosResult.data ??
+    []) as PartidoParaRanking[];
+  const victorias = contarVictoriasRanking(partidos);
+  const bonus = calcularBonusFinales(partidos);
 
   const puntajes = new Map<string, PuntajeRanking>();
   for (const id of jugadorIds) {
-    const participacion = participaciones.get(id) ?? 0;
-    const partidosGanados = victorias.get(id) ?? 0;
-    const puntosBonus = bonus.get(id) ?? 0;
-    puntajes.set(id, {
-      partidosGanados,
-      puntos:
-        participacion * PUNTOS_POR_PARTICIPACION +
-        partidosGanados * PUNTOS_POR_PARTIDO_GANADO +
-        puntosBonus,
-    });
+    puntajes.set(
+      id,
+      puntajeDesdeConteos({
+        participaciones: participaciones.get(id) ?? 0,
+        partidosGanados: victorias.get(id) ?? 0,
+        bonus: bonus.get(id) ?? 0,
+      })
+    );
   }
 
   return puntajes;
 }
 
-// Empareja 0 vs N-1, 1 vs N-2, ... sobre un array ya ordenado de mejor a peor.
-function emparejarPorExtremos(ordenados: Jugador[]) {
-  const parejas: { mejor: Jugador; peor: Jugador }[] = [];
+export interface AsientoCuadro {
+  id: string | null;
+  nombre_completo: string;
+  isBye: boolean;
+}
+
+/** Valor del <select> para un asiento Bye en el borrador de cruces. */
+export const SLOT_BYE = "BYE";
+
+export function esSlotBye(slotId: string | null | undefined) {
+  if (slotId == null || slotId === "" || slotId === SLOT_BYE) return true;
+  return slotId.startsWith("bye-");
+}
+
+export function esBye(asiento: AsientoCuadro) {
+  return asiento.isBye || esSlotBye(asiento.id);
+}
+
+export function potenciaDeDosSuperior(cantidad: number) {
+  if (cantidad <= 1) return 2;
+  return 2 ** Math.ceil(Math.log2(cantidad));
+}
+
+/**
+ * Completa el bracket a la potencia de 2 siguiente inyectando nodos Bye.
+ */
+export function completarConByes(ordenados: Jugador[]): AsientoCuadro[] {
+  const potenciaObjetivo = potenciaDeDosSuperior(ordenados.length);
+  const cantidadByes = potenciaObjetivo - ordenados.length;
+
+  const asientos: AsientoCuadro[] = ordenados.map((jugador) => ({
+    id: jugador.id,
+    nombre_completo: jugador.nombre_completo,
+    isBye: false,
+  }));
+
+  for (let i = 0; i < cantidadByes; i += 1) {
+    asientos.push({
+      id: `bye-${i}`,
+      nombre_completo: "BYE",
+      isBye: true,
+    });
+  }
+
+  return asientos;
+}
+
+export function emparejarAsientosPorExtremos(ordenados: AsientoCuadro[]) {
+  const parejas: { mejor: AsientoCuadro; peor: AsientoCuadro }[] = [];
   let izquierda = 0;
   let derecha = ordenados.length - 1;
 
@@ -115,12 +130,157 @@ function emparejarPorExtremos(ordenados: Jugador[]) {
   return parejas;
 }
 
+export function emparejarAsientosEnPares(asientos: AsientoCuadro[]) {
+  const parejas: { mejor: AsientoCuadro; peor: AsientoCuadro }[] = [];
+  for (let i = 0; i < asientos.length; i += 2) {
+    const a = asientos[i];
+    const b = asientos[i + 1];
+    if (!a || !b) continue;
+    parejas.push({ mejor: a, peor: b });
+  }
+  return parejas;
+}
+
+/** Fisher-Yates: copia mezclada (no muta el original). */
+export function mezclarFisherYates<T>(items: T[]): T[] {
+  const copia = [...items];
+  for (let i = copia.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const temporal = copia[i];
+    copia[i] = copia[j];
+    copia[j] = temporal;
+  }
+  return copia;
+}
+
+export interface CruceDraft {
+  id: string;
+  jugador_1_id: string;
+  jugador_2_id: string;
+}
+
+function slotIdDeAsiento(asiento: AsientoCuadro) {
+  return esBye(asiento) ? SLOT_BYE : (asiento.id as string);
+}
+
+/** Si el azar dejó un BYE vs BYE, intercambia un Bye con un jugador real. */
+function repararParejasByeVsBye(
+  parejas: { mejor: AsientoCuadro; peor: AsientoCuadro }[]
+) {
+  const copia = parejas.map((pareja) => ({ ...pareja }));
+
+  for (let i = 0; i < copia.length; i += 1) {
+    if (!(esBye(copia[i].mejor) && esBye(copia[i].peor))) continue;
+
+    const j = copia.findIndex(
+      (otra, idx) => idx !== i && !esBye(otra.mejor) && !esBye(otra.peor)
+    );
+    if (j === -1) {
+      throw new Error("No se pudo armar el sorteo sin un cruce BYE vs BYE.");
+    }
+
+    const temporal = copia[i].peor;
+    copia[i].peor = copia[j].peor;
+    copia[j].peor = temporal;
+  }
+
+  return copia;
+}
+
+export function sortearCrucesDraft(inscriptos: Jugador[]): CruceDraft[] {
+  if (inscriptos.length < 2) return [];
+  const asientos = mezclarFisherYates(completarConByes(inscriptos));
+  const parejas = repararParejasByeVsBye(emparejarAsientosEnPares(asientos));
+  return parejas.map((pareja, indice) => ({
+    id: `draft-${indice}`,
+    jugador_1_id: slotIdDeAsiento(pareja.mejor),
+    jugador_2_id: slotIdDeAsiento(pareja.peor),
+  }));
+}
+
+export function idsDuplicadosEnDraft(cruces: CruceDraft[]): Set<string> {
+  const conteo = new Map<string, number>();
+  for (const cruce of cruces) {
+    for (const slotId of [cruce.jugador_1_id, cruce.jugador_2_id]) {
+      if (esSlotBye(slotId)) continue;
+      conteo.set(slotId, (conteo.get(slotId) ?? 0) + 1);
+    }
+  }
+  return new Set(
+    [...conteo.entries()]
+      .filter(([, cantidad]) => cantidad > 1)
+      .map(([id]) => id)
+  );
+}
+
+export function hayByeVsByeEnDraft(cruces: CruceDraft[]) {
+  return cruces.some(
+    (cruce) => esSlotBye(cruce.jugador_1_id) && esSlotBye(cruce.jugador_2_id)
+  );
+}
+
+export function asientoDesdeSlot(
+  slotId: string,
+  inscriptos: Jugador[]
+): AsientoCuadro {
+  if (esSlotBye(slotId)) {
+    return { id: null, nombre_completo: "BYE", isBye: true };
+  }
+  const jugador = inscriptos.find((item) => item.id === slotId);
+  if (!jugador) {
+    throw new Error("Hay un slot con un jugador que no está inscripto.");
+  }
+  return {
+    id: jugador.id,
+    nombre_completo: jugador.nombre_completo,
+    isBye: false,
+  };
+}
+
+function filaPartidoDesdePareja(
+  torneo_id: string,
+  fase: string,
+  mejor: AsientoCuadro,
+  peor: AsientoCuadro
+) {
+  const byeMejor = esBye(mejor);
+  const byePeor = esBye(peor);
+
+  if (byeMejor && byePeor) {
+    throw new Error("No se puede generar un cruce Bye vs Bye.");
+  }
+
+  if (byeMejor || byePeor) {
+    const real = byePeor ? mejor : peor;
+    return {
+      torneo_id,
+      jugador_1_id: byeMejor ? null : mejor.id,
+      jugador_2_id: byePeor ? null : peor.id,
+      ganador_id: real.id,
+      resultado: "W.O.",
+      fase,
+      estado: "Finalizado" as const,
+    };
+  }
+
+  return {
+    torneo_id,
+    jugador_1_id: mejor.id,
+    jugador_2_id: peor.id,
+    ganador_id: null,
+    resultado: null,
+    fase,
+    estado: "Pendiente" as const,
+  };
+}
+
 /**
  * Genera los cruces de clasificación de un torneo:
- * 1. Exige cantidad par de inscriptos.
+ * 1. Completa a potencia de 2 con Byes si hay cantidad impar (o no potencia).
  * 2. Ordena por ranking (mejor → peor).
- * 3. Empareja extremos (mejor disponible vs peor disponible).
- * 4. Inserta los partidos en Supabase con fase "Clasificacion".
+ * 3. Empareja extremos (mejor disponible vs peor disponible / Bye).
+ * 4. Si hay Bye, el partido nace Finalizado con W.O. para el jugador real.
+ * 5. Inserta los partidos en Supabase con fase "Clasificacion".
  */
 export async function generarCrucesClasificacion(
   torneo_id: string,
@@ -147,9 +307,9 @@ export async function generarCrucesClasificacion(
     );
   }
 
-  if (inscriptos.length % 2 !== 0) {
+  if (inscriptos.length < 2) {
     throw new Error(
-      "La cantidad de inscriptos debe ser par para armar los cruces."
+      "Se necesitan al menos 2 jugadores para armar los cruces."
     );
   }
 
@@ -171,21 +331,85 @@ export async function generarCrucesClasificacion(
     return a.nombre_completo.localeCompare(b.nombre_completo, "es");
   });
 
-  const parejas = emparejarPorExtremos(ordenados);
+  const asientos = completarConByes(ordenados);
+  const parejas = emparejarAsientosPorExtremos(asientos);
 
-  const nuevosPartidos = parejas.map(({ mejor, peor }) => ({
-    torneo_id,
-    jugador_1_id: mejor.id,
-    jugador_2_id: peor.id,
-    fase: "Clasificacion",
-    estado: "Pendiente" as const,
-  }));
+  const nuevosPartidos = parejas.map(({ mejor, peor }) =>
+    filaPartidoDesdePareja(torneo_id, "Clasificacion", mejor, peor)
+  );
 
   const { error } = await supabase.from("partidos").insert(nuevosPartidos);
 
   if (error) {
     throw new Error(
       `No se pudieron insertar los cruces de clasificación: ${error.message}`
+    );
+  }
+
+  return {
+    ok: true,
+    partidosCreados: nuevosPartidos.length,
+  };
+}
+
+/**
+ * Persiste el borrador editable de clasificación (el sorteo azaroso o
+ * los intercambios manuales del admin) con las mismas reglas de Bye / W.O.
+ */
+export async function guardarCrucesDesdeDraft(
+  torneo_id: string,
+  inscriptos: Jugador[],
+  cruces: CruceDraft[]
+): Promise<ResultadoGeneracionCruces> {
+  if (cruces.length === 0) {
+    throw new Error("No hay cruces en el borrador para guardar.");
+  }
+
+  const duplicados = idsDuplicadosEnDraft(cruces);
+  if (duplicados.size > 0) {
+    throw new Error(
+      "Hay jugadores asignados a más de un cruce. Corregí los duplicados antes de guardar."
+    );
+  }
+
+  if (hayByeVsByeEnDraft(cruces)) {
+    throw new Error("No se puede guardar un cruce BYE vs BYE.");
+  }
+
+  const supabase = createClient();
+
+  const { count, error: errorConteo } = await supabase
+    .from("partidos")
+    .select("*", { count: "exact", head: true })
+    .eq("torneo_id", torneo_id)
+    .eq("fase", "Clasificacion");
+
+  if (errorConteo) {
+    throw new Error(
+      `No se pudo verificar cruces existentes: ${errorConteo.message}`
+    );
+  }
+
+  if ((count ?? 0) > 0) {
+    throw new Error(
+      "Ya existen cruces generados para este torneo. Eliminalos primero si querés regenerarlos."
+    );
+  }
+
+  const nuevosPartidos = cruces.map((cruce) =>
+    filaPartidoDesdePareja(
+      torneo_id,
+      "Clasificacion",
+      asientoDesdeSlot(cruce.jugador_1_id, inscriptos),
+      asientoDesdeSlot(cruce.jugador_2_id, inscriptos)
+    )
+  );
+
+  const { error } = await supabase.from("partidos").insert(nuevosPartidos);
+
+  if (error) {
+    throw new Error(
+      `No se pudieron guardar los cruces de clasificación: ${error.message}`
     );
   }
 
@@ -209,18 +433,51 @@ const FASES_CUADRO_ELIMINATORIO = [
   "Final",
 ] as const;
 
-// Cuadro de 16 jugadores = 8 partidos de clasificación → 15 de eliminación.
-const PARTIDOS_CLASIFICACION_ESPERADOS = 8;
+/** Cantidad de partidos de la 1ª ronda → árbol hasta la Final. */
+const RONDAS_POR_CANTIDAD: Record<number, readonly string[]> = {
+  8: ["Octavos de Final", "Cuartos de Final", "Semifinal", "Final"],
+  4: ["Cuartos de Final", "Semifinal", "Final"],
+  2: ["Semifinal", "Final"],
+  1: ["Final"],
+};
 
-// Fisher-Yates: mezclá el array in-place y devolvélo (mismo reference).
-function mezclarFisherYates<T>(items: T[]): T[] {
-  for (let i = items.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(Math.random() * (i + 1));
-    const temporal = items[i];
-    items[i] = items[j];
-    items[j] = temporal;
+function rondasEliminatorias(cantidadPrimeraRonda: number) {
+  const rondas = RONDAS_POR_CANTIDAD[cantidadPrimeraRonda];
+  if (!rondas) {
+    throw new Error(
+      `La clasificación debe tener 1, 2, 4 u 8 partidos (potencia de 2). Hay ${cantidadPrimeraRonda}.`
+    );
   }
-  return items;
+  return rondas;
+}
+
+function partidoPerteneceACategoria(
+  partido: { jugador_1_id: string | null; jugador_2_id: string | null },
+  idsCategoria: Set<string>
+) {
+  return Boolean(
+    (partido.jugador_1_id && idsCategoria.has(partido.jugador_1_id)) ||
+      (partido.jugador_2_id && idsCategoria.has(partido.jugador_2_id))
+  );
+}
+
+/** Mezcla solo perdedores; reintenta si el azar deja un ganador vs sí mismo. */
+function mezclarPerdedoresSinAutocruces(
+  ganadores: string[],
+  perdedores: (string | null)[]
+) {
+  let mezclados = mezclarFisherYates([...perdedores]);
+  for (let intento = 0; intento < 25; intento += 1) {
+    const hayAutocruz = ganadores.some(
+      (ganadorId, indice) =>
+        mezclados[indice] != null && mezclados[indice] === ganadorId
+    );
+    if (!hayAutocruz) return mezclados;
+    mezclados = mezclarFisherYates([...perdedores]);
+  }
+  throw new Error(
+    "No se pudo sortear el cuadro sin que un jugador quede contra sí mismo."
+  );
 }
 
 // Si algo falla a mitad de camino, borramos en orden inverso (los que
@@ -241,16 +498,26 @@ async function rollbackPartidosCreados(
 }
 
 /**
- * Arma el cuadro de eliminación directa de 16 jugadores (15 partidos):
- * Final → 2 Semis → 4 Cuartos → 8 Octavos, encadenados con
- * siguiente_partido_id. Los Octavos llevan jugadores (ganador vs perdedor
- * sorteado); el resto nace con jugadores null.
+ * Arma el cuadro eliminatorio a partir de la clasificación de UNA categoría:
+ * ganadores vs perdedores (incluye BYE) sorteados al azar.
+ * La 1ª ronda es Octavos / Cuartos / Semi / Final según la cantidad
+ * de partidos de clasificación (potencia de 2). El resto del árbol
+ * nace vacío y se encadena con siguiente_partido_id.
+ * Ganador vs BYE nace Finalizado con W.O. y el ganador avanza solo.
  */
 export async function generarCuadroFinal(
-  torneo_id: string
+  torneo_id: string,
+  jugadorIdsCategoria: string[]
 ): Promise<ResultadoGeneracionCruces> {
   const supabase = createClient();
   const idsCreados: string[] = [];
+  const idsCategoria = new Set(jugadorIdsCategoria);
+
+  if (idsCategoria.size === 0) {
+    throw new Error(
+      "Seleccioná una categoría con inscriptos para armar el cuadro final."
+    );
+  }
 
   const { data, error } = await supabase
     .from("partidos")
@@ -264,199 +531,328 @@ export async function generarCuadroFinal(
     );
   }
 
-  const partidosClasificacion = (data as PartidoClasificacion[] | null) ?? [];
+  const partidosClasificacion = (
+    (data as PartidoClasificacion[] | null) ?? []
+  ).filter((partido) => partidoPerteneceACategoria(partido, idsCategoria));
 
-  if (partidosClasificacion.length !== PARTIDOS_CLASIFICACION_ESPERADOS) {
+  if (partidosClasificacion.length === 0) {
     throw new Error(
-      "El cuadro final requiere exactamente 8 partidos de Clasificación (16 jugadores)."
+      "No hay partidos de clasificación para esta categoría."
     );
   }
 
-  const todosFinalizados = partidosClasificacion.every(
-    (partido) =>
-      partido.estado === "Finalizado" && Boolean(partido.ganador_id)
+  const pendientes = partidosClasificacion.filter(
+    (partido) => partido.estado !== "Finalizado" || !partido.ganador_id
   );
-
-  if (!todosFinalizados) {
+  if (pendientes.length > 0) {
     throw new Error(
-      "Faltan resultados por cargar en la etapa de Clasificación."
+      `Faltan ${pendientes.length} resultado(s) de clasificación por cargar antes de armar el cuadro final.`
     );
   }
 
-  // Candado: no regenerar si ya hay algún partido del cuadro eliminatorio.
-  const { count: cantidadCuadro, error: errorConteoCuadro } = await supabase
+  const rondas = rondasEliminatorias(partidosClasificacion.length);
+  const primeraFase = rondas[0];
+
+  const { data: cuadroExistente, error: errorCuadro } = await supabase
     .from("partidos")
-    .select("*", { count: "exact", head: true })
+    .select("jugador_1_id, jugador_2_id, fase")
     .eq("torneo_id", torneo_id)
     .in("fase", [...FASES_CUADRO_ELIMINATORIO]);
 
-  if (errorConteoCuadro) {
+  if (errorCuadro) {
     throw new Error(
-      `No se pudo verificar el cuadro existente: ${errorConteoCuadro.message}`
+      `No se pudo verificar el cuadro existente: ${errorCuadro.message}`
     );
   }
 
-  if ((cantidadCuadro ?? 0) > 0) {
+  const yaHayCuadroDeCategoria = (cuadroExistente ?? []).some((partido) =>
+    partidoPerteneceACategoria(partido, idsCategoria)
+  );
+  if (yaHayCuadroDeCategoria) {
     throw new Error(
-      "Ya existe un cuadro final para este torneo. Eliminalo primero si querés regenerarlo."
+      "Ya existe un cuadro final para esta categoría. Eliminalo primero si querés regenerarlo."
     );
   }
 
   const ganadores: string[] = [];
-  const perdedores: string[] = [];
+  const perdedores: (string | null)[] = [];
 
   for (const partido of partidosClasificacion) {
     const ganadorId = partido.ganador_id!;
+    if (
+      partido.jugador_1_id !== ganadorId &&
+      partido.jugador_2_id !== ganadorId
+    ) {
+      throw new Error(
+        "Hay un partido de clasificación cuyo ganador no es uno de los dos jugadores."
+      );
+    }
+
     const perdedorId =
       partido.jugador_1_id === ganadorId
         ? partido.jugador_2_id
-        : partido.jugador_2_id === ganadorId
-          ? partido.jugador_1_id
-          : null;
-
-    if (!perdedorId) {
-      throw new Error(
-        "Faltan resultados por cargar en la etapa de Clasificación."
-      );
-    }
+        : partido.jugador_1_id;
 
     ganadores.push(ganadorId);
     perdedores.push(perdedorId);
   }
 
-  const perdedoresAleatorios = mezclarFisherYates([...perdedores]);
+  const idsGanadores = new Set(ganadores);
+  if (idsGanadores.size !== ganadores.length) {
+    throw new Error(
+      "Hay ganadores duplicados en la clasificación. No se puede armar el cuadro."
+    );
+  }
 
-  try {
-    // 1) Final (sin jugadores; nadie apunta a ella todavía).
-    const { data: finalData, error: errorFinal } = await supabase
-      .from("partidos")
-      .insert({
-        torneo_id,
-        jugador_1_id: null,
-        jugador_2_id: null,
-        fase: "Final",
-        estado: "Pendiente",
-        siguiente_partido_id: null,
-      })
-      .select("id")
-      .single();
-
-    if (errorFinal || !finalData) {
+  const perdedoresReales = perdedores.filter((id): id is string => id != null);
+  const idsPerdedores = new Set(perdedoresReales);
+  if (idsPerdedores.size !== perdedoresReales.length) {
+    throw new Error(
+      "Hay perdedores duplicados en la clasificación. No se puede armar el cuadro."
+    );
+  }
+  for (const id of perdedoresReales) {
+    if (idsGanadores.has(id)) {
       throw new Error(
-        `No se pudo crear la Final: ${errorFinal?.message ?? "sin id"}`
+        "Un jugador figura como ganador y perdedor a la vez. Revisá los resultados de clasificación."
       );
     }
-    const finalId = finalData.id as string;
-    idsCreados.push(finalId);
+  }
 
-    // 2) 2 Semifinales → Final.
-    const { data: semisData, error: errorSemis } = await supabase
-      .from("partidos")
-      .insert([
-        {
-          torneo_id,
-          jugador_1_id: null,
-          jugador_2_id: null,
-          fase: "Semifinal",
-          estado: "Pendiente",
-          siguiente_partido_id: finalId,
-        },
-        {
-          torneo_id,
-          jugador_1_id: null,
-          jugador_2_id: null,
-          fase: "Semifinal",
-          estado: "Pendiente",
-          siguiente_partido_id: finalId,
-        },
-      ])
-      .select("id");
+  const perdedoresAleatorios = mezclarPerdedoresSinAutocruces(
+    ganadores,
+    perdedores
+  );
 
-    if (errorSemis || !semisData || semisData.length !== 2) {
-      throw new Error(
-        `No se pudieron crear las Semifinales: ${errorSemis?.message ?? "cantidad inválida"}`
-      );
+  const vistosEnRonda = new Set<string>();
+  const primeraRonda = ganadores.map((ganadorId, indice) => {
+    const perdedorId = perdedoresAleatorios[indice] ?? null;
+    if (perdedorId != null && perdedorId === ganadorId) {
+      throw new Error("Un jugador no puede jugar contra sí mismo.");
     }
-    const semifinalIds = semisData.map((fila) => fila.id as string);
-    idsCreados.push(...semifinalIds);
-
-    // 3) 4 Cuartos → Semis (0,1 → Semi 0; 2,3 → Semi 1).
-    const { data: cuartosData, error: errorCuartos } = await supabase
-      .from("partidos")
-      .insert([
-        {
-          torneo_id,
-          jugador_1_id: null,
-          jugador_2_id: null,
-          fase: "Cuartos de Final",
-          estado: "Pendiente",
-          siguiente_partido_id: semifinalIds[0],
-        },
-        {
-          torneo_id,
-          jugador_1_id: null,
-          jugador_2_id: null,
-          fase: "Cuartos de Final",
-          estado: "Pendiente",
-          siguiente_partido_id: semifinalIds[0],
-        },
-        {
-          torneo_id,
-          jugador_1_id: null,
-          jugador_2_id: null,
-          fase: "Cuartos de Final",
-          estado: "Pendiente",
-          siguiente_partido_id: semifinalIds[1],
-        },
-        {
-          torneo_id,
-          jugador_1_id: null,
-          jugador_2_id: null,
-          fase: "Cuartos de Final",
-          estado: "Pendiente",
-          siguiente_partido_id: semifinalIds[1],
-        },
-      ])
-      .select("id");
-
-    if (errorCuartos || !cuartosData || cuartosData.length !== 4) {
-      throw new Error(
-        `No se pudieron crear los Cuartos: ${errorCuartos?.message ?? "cantidad inválida"}`
-      );
+    for (const id of [ganadorId, perdedorId]) {
+      if (id == null) continue;
+      if (vistosEnRonda.has(id)) {
+        throw new Error(
+          "Un jugador aparece dos veces en la misma ronda del cuadro."
+        );
+      }
+      vistosEnRonda.add(id);
     }
-    const cuartosIds = cuartosData.map((fila) => fila.id as string);
-    idsCreados.push(...cuartosIds);
 
-    // 4) 8 Octavos con jugadores (ganador vs perdedor sorteado) → Cuartos.
-    const octavos = ganadores.map((ganadorId, indice) => ({
+    const esBye = perdedorId == null;
+    return {
       torneo_id,
       jugador_1_id: ganadorId,
-      jugador_2_id: perdedoresAleatorios[indice],
-      fase: "Octavos de Final",
-      estado: "Pendiente" as const,
-      siguiente_partido_id: cuartosIds[Math.floor(indice / 2)],
+      jugador_2_id: perdedorId,
+      ganador_id: esBye ? ganadorId : null,
+      resultado: esBye ? "W.O." : null,
+      fase: primeraFase,
+      estado: (esBye ? "Finalizado" : "Pendiente") as
+        | "Finalizado"
+        | "Pendiente",
+      siguiente_partido_id: null as string | null,
+    };
+  });
+
+  try {
+    const idsRondaSiguiente = await crearRondasPosteriores(
+      supabase,
+      torneo_id,
+      rondas,
+      idsCreados
+    );
+
+    const partidosPrimeraRonda = primeraRonda.map((partido, indice) => ({
+      ...partido,
+      siguiente_partido_id:
+        idsRondaSiguiente.length === 0
+          ? null
+          : idsRondaSiguiente[Math.floor(indice / 2)],
     }));
 
-    const { data: octavosData, error: errorOctavos } = await supabase
+    const { data: primeraData, error: errorPrimera } = await supabase
       .from("partidos")
-      .insert(octavos)
-      .select("id");
+      .insert(partidosPrimeraRonda)
+      .select("id, ganador_id, siguiente_partido_id, estado");
 
-    if (errorOctavos || !octavosData || octavosData.length !== 8) {
+    if (
+      errorPrimera ||
+      !primeraData ||
+      primeraData.length !== partidosPrimeraRonda.length
+    ) {
       throw new Error(
-        `No se pudieron crear los Octavos: ${errorOctavos?.message ?? "cantidad inválida"}`
+        `No se pudieron crear los partidos de ${primeraFase}: ${errorPrimera?.message ?? "cantidad inválida"}`
       );
     }
-    idsCreados.push(...octavosData.map((fila) => fila.id as string));
+    idsCreados.push(...primeraData.map((fila) => fila.id as string));
+
+    for (const fila of primeraData) {
+      if (fila.estado !== "Finalizado" || !fila.ganador_id) continue;
+      await promoverGanadorAlSiguientePartido({
+        siguiente_partido_id: fila.siguiente_partido_id as string | null,
+        ganador_id: fila.ganador_id as string,
+      });
+    }
 
     return {
       ok: true,
       partidosCreados: idsCreados.length,
+      primeraFase,
     };
   } catch (error) {
     await rollbackPartidosCreados(supabase, idsCreados);
     throw error;
   }
+}
+
+export interface CrucePrimeraRondaEditado {
+  id: string;
+  jugador_1_id: string | null;
+  jugador_2_id: string | null;
+  siguiente_partido_id: string | null;
+}
+
+/**
+ * Reemplaza los asientos de la primera ronda eliminatoria (p. ej. Cuartos).
+ * Recalcula W.O. vs BYE, limpia las rondas siguientes y vuelve a promover.
+ */
+export async function guardarEdicionPrimeraRonda(params: {
+  cruces: CrucePrimeraRondaEditado[];
+  idsRondasPosteriores: string[];
+}): Promise<{ ok: true }> {
+  const { cruces, idsRondasPosteriores } = params;
+  if (cruces.length === 0) {
+    throw new Error("No hay cruces de esta ronda para guardar.");
+  }
+
+  const vistos = new Set<string>();
+  for (const cruce of cruces) {
+    if (cruce.jugador_1_id && cruce.jugador_1_id === cruce.jugador_2_id) {
+      throw new Error("Un jugador no puede jugar contra sí mismo.");
+    }
+    if (!cruce.jugador_1_id && !cruce.jugador_2_id) {
+      throw new Error("No se puede guardar un cruce BYE vs BYE.");
+    }
+    for (const id of [cruce.jugador_1_id, cruce.jugador_2_id]) {
+      if (!id) continue;
+      if (vistos.has(id)) {
+        throw new Error(
+          "Un jugador aparece dos veces en la misma ronda del cuadro."
+        );
+      }
+      vistos.add(id);
+    }
+  }
+
+  const supabase = createClient();
+
+  for (const cruce of cruces) {
+    const bye1 = cruce.jugador_1_id == null;
+    const bye2 = cruce.jugador_2_id == null;
+    const esBye = bye1 || bye2;
+    const ganadorId = bye1
+      ? cruce.jugador_2_id
+      : bye2
+        ? cruce.jugador_1_id
+        : null;
+
+    const { error } = await supabase
+      .from("partidos")
+      .update({
+        jugador_1_id: cruce.jugador_1_id,
+        jugador_2_id: cruce.jugador_2_id,
+        ganador_id: esBye ? ganadorId : null,
+        resultado: esBye ? "W.O." : null,
+        estado: esBye ? "Finalizado" : "Pendiente",
+      })
+      .eq("id", cruce.id);
+
+    if (error) {
+      throw new Error(
+        `No se pudo actualizar el cruce: ${error.message}`
+      );
+    }
+  }
+
+  for (const id of idsRondasPosteriores) {
+    const { error } = await supabase
+      .from("partidos")
+      .update({
+        jugador_1_id: null,
+        jugador_2_id: null,
+        ganador_id: null,
+        resultado: null,
+        estado: "Pendiente",
+      })
+      .eq("id", id);
+
+    if (error) {
+      throw new Error(
+        `No se pudieron limpiar las rondas siguientes: ${error.message}`
+      );
+    }
+  }
+
+  for (const cruce of cruces) {
+    const bye1 = cruce.jugador_1_id == null;
+    const bye2 = cruce.jugador_2_id == null;
+    if (!bye1 && !bye2) continue;
+    const ganadorId = bye1 ? cruce.jugador_2_id : cruce.jugador_1_id;
+    if (!ganadorId) continue;
+    await promoverGanadorAlSiguientePartido({
+      siguiente_partido_id: cruce.siguiente_partido_id,
+      ganador_id: ganadorId,
+    });
+  }
+
+  return { ok: true };
+}
+
+async function crearRondasPosteriores(
+  supabase: ReturnType<typeof createClient>,
+  torneo_id: string,
+  rondas: readonly string[],
+  idsCreados: string[]
+): Promise<string[]> {
+  const posteriores = rondas.slice(1);
+  if (posteriores.length === 0) return [];
+
+  const desdeElFondo = [...posteriores].reverse();
+  let idsRondaActual: string[] = [];
+
+  for (let i = 0; i < desdeElFondo.length; i += 1) {
+    const fase = desdeElFondo[i];
+    const cantidad = 2 ** i;
+    const filasIds: string[] = [];
+    for (let indice = 0; indice < cantidad; indice += 1) {
+      const { data, error } = await supabase
+        .from("partidos")
+        .insert({
+          torneo_id,
+          jugador_1_id: null,
+          jugador_2_id: null,
+          fase,
+          estado: "Pendiente",
+          siguiente_partido_id:
+            i === 0 ? null : idsRondaActual[Math.floor(indice / 2)],
+        })
+        .select("id")
+        .single();
+
+      if (error || !data) {
+        throw new Error(
+          `No se pudieron crear los partidos de ${fase}: ${error?.message ?? "sin id"}`
+        );
+      }
+      filasIds.push(data.id as string);
+    }
+
+    idsRondaActual = filasIds;
+    idsCreados.push(...idsRondaActual);
+  }
+
+  return idsRondaActual;
 }
 
 /**
@@ -535,6 +931,30 @@ type SnapshotDestino = {
   jugador_1_id: string | null;
   jugador_2_id: string | null;
 };
+
+/**
+ * Actualiza solo fecha/hora y cancha. No toca resultado, ganador ni estado.
+ */
+export async function guardarProgramacionPartido(params: {
+  partido_id: string;
+  cancha: string | null;
+  fecha_horario: string | null;
+}): Promise<{ ok: true }> {
+  const supabase = createClient();
+  const { error } = await supabase
+    .from("partidos")
+    .update({
+      cancha: params.cancha,
+      fecha_horario: params.fecha_horario,
+    })
+    .eq("id", params.partido_id);
+
+  if (error) {
+    throw new Error(`No se pudo guardar la programación: ${error.message}`);
+  }
+
+  return { ok: true };
+}
 
 /**
  * Guarda resultado/ganador de un partido y, si el ganador cambió, propaga

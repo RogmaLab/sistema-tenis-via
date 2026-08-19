@@ -4,6 +4,17 @@ import { Info } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import type { Jugador, JugadorRanking } from "@/lib/types";
 import { RankingTable } from "./ranking-table";
+import {
+  PUNTOS_BONUS_CAMPEON,
+  PUNTOS_BONUS_FINALISTA,
+  PUNTOS_POR_PARTICIPACION,
+  PUNTOS_POR_PARTIDO_GANADO,
+  calcularBonusFinales,
+  contarApariciones,
+  contarVictoriasRanking,
+  puntajeDesdeConteos,
+  type PartidoParaRanking,
+} from "@/lib/motor-ranking";
 
 interface CriterioPuntaje {
   etiqueta: string;
@@ -11,76 +22,11 @@ interface CriterioPuntaje {
 }
 
 const CRITERIOS_PUNTAJE: CriterioPuntaje[] = [
-  { etiqueta: "Participación / Inscripción", puntos: 1 },
-  { etiqueta: "Partido ganado", puntos: 3 },
-  { etiqueta: "Bonus finalista", puntos: 5 },
-  { etiqueta: "Bonus campeón", puntos: 10 },
+  { etiqueta: "Participación / Inscripción", puntos: PUNTOS_POR_PARTICIPACION },
+  { etiqueta: "Partido ganado (incluye BYE)", puntos: PUNTOS_POR_PARTIDO_GANADO },
+  { etiqueta: "Bonus finalista", puntos: PUNTOS_BONUS_FINALISTA },
+  { etiqueta: "Bonus campeón", puntos: PUNTOS_BONUS_CAMPEON },
 ];
-
-const PUNTOS_POR_PARTICIPACION = 1;
-const PUNTOS_POR_PARTIDO_GANADO = 3;
-const PUNTOS_BONUS_FINALISTA = 5;
-const PUNTOS_BONUS_CAMPEON = 10;
-
-// La fase que dispara los bonus de Final. Coincide con el último valor de
-// FASES_PARTIDO (ver lib/types.ts), que alimenta el <select> de "Fase" en
-// el modal de edición de partidos.
-const FASE_FINAL = "Final";
-
-// Fila mínima de "partidos" que necesitamos para calcular victorias y bonus.
-// El índice de firma extra permite reutilizar `contarApariciones` (que
-// espera un registro genérico columna -> valor) sin duplicar esa función.
-interface PartidoFinalizado {
-  ganador_id: string | null;
-  fase: string | null;
-  jugador_1_id: string | null;
-  jugador_2_id: string | null;
-  [columna: string]: string | null;
-}
-
-// Suma las apariciones de un jugador en un array de filas que tienen la
-// columna indicada (ej. contar cuántas veces aparece cada jugador_id).
-function contarApariciones(
-  filas: Record<string, string | null>[],
-  columna: string
-) {
-  const conteo = new Map<string, number>();
-  for (const fila of filas) {
-    const id = fila[columna];
-    if (!id) continue;
-    conteo.set(id, (conteo.get(id) ?? 0) + 1);
-  }
-  return conteo;
-}
-
-// Bonus Campeón (+10) para el ganador y Bonus Finalista (+5) para el
-// perdedor de cada partido de fase "Final" ya finalizado. Un torneo puede
-// tener más de una Final (ej. varias categorías), así que se suman todas.
-function calcularBonusFinales(partidos: PartidoFinalizado[]) {
-  const bonusPorJugador = new Map<string, number>();
-
-  const sumarBonus = (id: string | null | undefined, puntos: number) => {
-    if (!id) return;
-    bonusPorJugador.set(id, (bonusPorJugador.get(id) ?? 0) + puntos);
-  };
-
-  for (const partido of partidos) {
-    if (partido.fase !== FASE_FINAL || !partido.ganador_id) continue;
-
-    sumarBonus(partido.ganador_id, PUNTOS_BONUS_CAMPEON);
-
-    const perdedorId =
-      partido.jugador_1_id === partido.ganador_id
-        ? partido.jugador_2_id
-        : partido.jugador_2_id === partido.ganador_id
-          ? partido.jugador_1_id
-          : null;
-
-    sumarBonus(perdedorId, PUNTOS_BONUS_FINALISTA);
-  }
-
-  return bonusPorJugador;
-}
 
 export default async function RankingPage() {
   const supabase = await createClient();
@@ -94,7 +40,7 @@ export default async function RankingPage() {
       // los jugadores y la fase para poder calcular ambas cosas de una sola consulta.
       supabase
         .from("partidos")
-        .select("ganador_id, fase, jugador_1_id, jugador_2_id")
+        .select("ganador_id, fase, jugador_1_id, jugador_2_id, resultado")
         .eq("estado", "Finalizado"),
     ]);
 
@@ -119,31 +65,28 @@ export default async function RankingPage() {
 
   const jugadores = (jugadoresResult.data as Jugador[]) ?? [];
   const partidosFinalizados =
-    (partidosFinalizadosResult.data as PartidoFinalizado[]) ?? [];
+    (partidosFinalizadosResult.data as PartidoParaRanking[]) ?? [];
 
   const participacionesPorJugador = contarApariciones(
     inscripcionesResult.data ?? [],
     "jugador_id"
   );
-  const victoriasPorJugador = contarApariciones(
-    partidosFinalizados,
-    "ganador_id"
-  );
+  const victoriasPorJugador = contarVictoriasRanking(partidosFinalizados);
   const bonusPorJugador = calcularBonusFinales(partidosFinalizados);
 
   const ranking: JugadorRanking[] = jugadores.map((jugador) => {
     const participaciones = participacionesPorJugador.get(jugador.id) ?? 0;
-    const partidosGanados = victoriasPorJugador.get(jugador.id) ?? 0;
-    const bonus = bonusPorJugador.get(jugador.id) ?? 0;
+    const { partidosGanados, puntos } = puntajeDesdeConteos({
+      participaciones,
+      partidosGanados: victoriasPorJugador.get(jugador.id) ?? 0,
+      bonus: bonusPorJugador.get(jugador.id) ?? 0,
+    });
 
     return {
       ...jugador,
       participaciones,
       partidosGanados,
-      puntos:
-        participaciones * PUNTOS_POR_PARTICIPACION +
-        partidosGanados * PUNTOS_POR_PARTIDO_GANADO +
-        bonus,
+      puntos,
     };
   });
 

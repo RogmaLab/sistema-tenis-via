@@ -15,10 +15,7 @@
     "next": "16.3.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "react-svg-pan-zoom": "^3.13.1",
-    "react-tournament-brackets": "^1.0.41",
     "sonner": "^2.0.8",
-    "styled-components": "^6.5.2",
     "ws": "^8.21.2"
   },
   "devDependencies": {

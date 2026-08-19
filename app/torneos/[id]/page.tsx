@@ -4,6 +4,7 @@
 // únicamente fuerza el renderizado dinámico (SSR en cada request) para
 // evitar que Next.js intente prerenderizarla como estática.
 export const dynamic = "force-dynamic";
+export const dynamicParams = true;
 
 import { TorneoDetalleClient } from "./torneo-detalle-client";
 

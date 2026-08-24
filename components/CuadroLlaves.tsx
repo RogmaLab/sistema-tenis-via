@@ -1,17 +1,20 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { Trophy } from "lucide-react";
 import {
   columnasDelArbolCuadro,
   RONDA_CUADRO_LABELS,
   type PartidoParaCuadro,
 } from "@/lib/adaptar-cuadro-torneo";
+import {
+  TarjetaPartidoTenis,
+  type DatosPartidoTarjeta,
+} from "@/components/TarjetaPartidoTenis";
 
 const TEMA_LLAVES = {
   fondoPartido: "#1a1a1a",
   borde: "#3f3f46",
-  texto: "#ffffff",
   subtitulo: "#a3a3a3",
   acento: "#ea580c",
   linea: "#52525b",
@@ -31,79 +34,6 @@ interface CuadroLlavesProps {
 
 interface LineaLlave {
   d: string;
-}
-
-function nombreAsiento(
-  jugador: { nombre_completo: string } | null,
-  vacio: boolean
-) {
-  if (jugador?.nombre_completo) return jugador.nombre_completo;
-  if (vacio) return "Por definir";
-  return "BYE";
-}
-
-function parsearGamesPorJugador(resultado: string | null): {
-  j1: string[];
-  j2: string[];
-} | null {
-  if (!resultado || resultado === "W.O.") return null;
-  const j1: string[] = [];
-  const j2: string[] = [];
-  for (const parte of resultado.split(",")) {
-    const [a, b] = parte.trim().split("-").map((valor) => valor.trim());
-    if (!a || !b) continue;
-    j1.push(a);
-    j2.push(b);
-  }
-  if (j1.length === 0) return null;
-  return { j1, j2 };
-}
-
-function FilaJugador({
-  nombre,
-  ganador,
-  derecha,
-}: {
-  nombre: string;
-  ganador: boolean;
-  derecha: ReactNode;
-}) {
-  return (
-    <div className="flex min-h-8 items-center justify-between gap-2 px-2.5 py-0.5">
-      <span
-        title={nombre}
-        className="min-w-0 truncate text-[12px] font-semibold leading-tight sm:text-[13px]"
-        style={{ color: ganador ? TEMA_LLAVES.acento : TEMA_LLAVES.texto }}
-      >
-        {nombre}
-      </span>
-      <div className="flex shrink-0 items-center justify-end">{derecha}</div>
-    </div>
-  );
-}
-
-function MarcadorFila({
-  games,
-  ganador,
-}: {
-  games: string[];
-  ganador: boolean;
-}) {
-  return (
-    <span className="flex items-center gap-1.5 tabular-nums">
-      {games.map((game, i) => (
-        <span
-          key={`${game}-${i}`}
-          className="min-w-3 text-right text-[11px] font-semibold leading-none sm:text-[12px]"
-          style={{
-            color: ganador ? TEMA_LLAVES.acento : TEMA_LLAVES.texto,
-          }}
-        >
-          {game}
-        </span>
-      ))}
-    </span>
-  );
 }
 
 function nombreCampeon(final: PartidoLlave | undefined) {
@@ -155,144 +85,17 @@ function TarjetaCampeon({ partidoFinal }: { partidoFinal: PartidoLlave }) {
   );
 }
 
-function BarraAccionesAdmin({
-  programado,
-  onProgramar,
-  onCargar,
-}: {
-  programado: boolean;
-  onProgramar: () => void;
-  onCargar: () => void;
-}) {
-  return (
-    <div
-      className="flex items-center gap-1.5 border-t px-1.5 py-1"
-      style={{ borderColor: TEMA_LLAVES.borde }}
-    >
-      <button
-        type="button"
-        onClick={onProgramar}
-        className="h-auto min-h-0 flex-1 rounded px-1 py-1 text-[10px] font-semibold leading-none"
-        style={{
-          minHeight: 0,
-          color: TEMA_LLAVES.subtitulo,
-          border: `1px solid ${TEMA_LLAVES.borde}`,
-        }}
-      >
-        {programado ? "Horario" : "Programar"}
-      </button>
-      <button
-        type="button"
-        onClick={onCargar}
-        className="h-auto min-h-0 flex-1 rounded px-1 py-1 text-[10px] font-semibold leading-none text-white"
-        style={{ minHeight: 0, backgroundColor: TEMA_LLAVES.acento }}
-      >
-        Cargar
-      </button>
-    </div>
-  );
-}
-
-function TarjetaPartido({
-  partido,
-  resaltado,
-  isAdmin,
-  onCargarResultado,
-  onProgramarPartido,
-  cardRef,
-}: {
-  partido: PartidoLlave;
-  resaltado: boolean;
-  isAdmin: boolean;
-  onCargarResultado: (partido: PartidoLlave) => void;
-  onProgramarPartido: (partido: PartidoLlave) => void;
-  cardRef: (el: HTMLDivElement | null) => void;
-}) {
-  const vacio = !partido.jugador_1 && !partido.jugador_2;
-  const j1Gana = Boolean(
-    partido.ganador_id && partido.ganador_id === partido.jugador_1?.id
-  );
-  const j2Gana = Boolean(
-    partido.ganador_id && partido.ganador_id === partido.jugador_2?.id
-  );
-  const puedeCargar =
-    isAdmin &&
-    partido.estado === "Pendiente" &&
-    Boolean(partido.jugador_1 && partido.jugador_2);
-  const puedeEditar =
-    isAdmin &&
-    partido.estado === "Finalizado" &&
-    partido.resultado !== "W.O.";
-  const games = parsearGamesPorJugador(partido.resultado);
-  const esWO = partido.resultado === "W.O.";
-  const programado = Boolean(partido.fecha_horario || partido.cancha);
-
-  function derechaDe(fila: 1 | 2) {
-    if (games) {
-      const marcador = (
-        <MarcadorFila
-          games={fila === 1 ? games.j1 : games.j2}
-          ganador={fila === 1 ? j1Gana : j2Gana}
-        />
-      );
-      if (!puedeEditar) return marcador;
-      return (
-        <button
-          type="button"
-          onClick={() => onCargarResultado(partido)}
-          className="h-auto p-0"
-          style={{ minHeight: 0 }}
-          aria-label="Editar resultado"
-        >
-          {marcador}
-        </button>
-      );
-    }
-    if (esWO) {
-      const ganoEstaFila = fila === 1 ? j1Gana : j2Gana;
-      if (!ganoEstaFila) return null;
-      return (
-        <span
-          className="text-[10px] font-semibold leading-none"
-          style={{ color: TEMA_LLAVES.acento }}
-        >
-          WO
-        </span>
-      );
-    }
-    return null;
-  }
-
-  return (
-    <div ref={cardRef} className="w-full min-w-0 max-w-full">
-      <div
-        className="overflow-hidden rounded-lg border"
-        style={{
-          backgroundColor: TEMA_LLAVES.fondoPartido,
-          borderColor: resaltado ? `${TEMA_LLAVES.acento}73` : TEMA_LLAVES.borde,
-        }}
-      >
-        <FilaJugador
-          nombre={nombreAsiento(partido.jugador_1, vacio)}
-          ganador={j1Gana}
-          derecha={derechaDe(1)}
-        />
-        <div className="mx-2 h-px" style={{ backgroundColor: TEMA_LLAVES.borde }} />
-        <FilaJugador
-          nombre={nombreAsiento(partido.jugador_2, vacio)}
-          ganador={j2Gana}
-          derecha={derechaDe(2)}
-        />
-        {puedeCargar ? (
-          <BarraAccionesAdmin
-            programado={programado}
-            onProgramar={() => onProgramarPartido(partido)}
-            onCargar={() => onCargarResultado(partido)}
-          />
-        ) : null}
-      </div>
-    </div>
-  );
+function aDatosTarjeta(partido: PartidoLlave): DatosPartidoTarjeta {
+  return {
+    id: String(partido.id),
+    estado: partido.estado,
+    resultado: partido.resultado,
+    ganador_id: partido.ganador_id,
+    fecha_programada: partido.fecha_programada,
+    cancha: partido.cancha ?? null,
+    jugador_1: partido.jugador_1,
+    jugador_2: partido.jugador_2,
+  };
 }
 
 export function CuadroLlaves({
@@ -306,8 +109,11 @@ export function CuadroLlaves({
   const nodosRef = useRef(new Map<string, HTMLDivElement>());
   const [lineas, setLineas] = useState<LineaLlave[]>([]);
   const columnas = columnasDelArbolCuadro(partidos);
-  const primera = columnas[0]?.partidos.length ?? 1;
-  const alto = Math.max(320, primera * 104 + 72);
+  const filasArbol = Math.max(1, columnas[0]?.partidos.length ?? 1);
+  const columnasGrid = `repeat(${columnas.length}, minmax(0, 1fr))`;
+  const partidoFinal = columnas.at(-1)?.partidos[0];
+  const mostrarCampeon =
+    Boolean(partidoFinal) && columnas.at(-1)?.fase === "Final";
 
   useLayoutEffect(() => {
     const marco = marcoRef.current;
@@ -348,13 +154,13 @@ export function CuadroLlaves({
       observer.disconnect();
       window.removeEventListener("resize", medir);
     };
-  }, [partidos, columnas.length, alto]);
+  }, [partidos, columnas.length, filasArbol]);
 
   if (columnas.length === 0) return null;
 
   return (
     <div
-      className="w-full overflow-hidden overscroll-none rounded-2xl border p-3 sm:p-4"
+      className="w-full overflow-x-auto rounded-2xl border p-3 sm:p-4"
       style={{
         backgroundColor: TEMA_LLAVES.fondoPartido,
         borderColor: TEMA_LLAVES.borde,
@@ -362,8 +168,7 @@ export function CuadroLlaves({
     >
       <div
         ref={marcoRef}
-        className="relative w-full overflow-hidden"
-        style={{ height: alto }}
+        className="relative h-auto min-w-[640px] pointer-events-none"
       >
         <svg
           className="pointer-events-none absolute inset-0 h-full w-full"
@@ -381,52 +186,90 @@ export function CuadroLlaves({
           ))}
         </svg>
 
-        <div className="relative z-10 flex h-full w-full">
-          {columnas.map((columna, indice) => {
+        <div
+          className="relative z-10 mb-2 grid w-full gap-x-4"
+          style={{ gridTemplateColumns: columnasGrid }}
+        >
+          {columnas.map((columna) => {
             const activa = rondaResaltada === columna.fase;
-            const esUltima = indice === columnas.length - 1;
             return (
-              <div
-                key={columna.fase}
-                className={`flex h-full min-w-0 flex-1 flex-col ${
-                  esUltima ? "pr-0" : "pr-4 sm:pr-6"
-                }`}
+              <p
+                key={`titulo-${columna.fase}`}
+                className="truncate text-center text-[10px] font-semibold uppercase tracking-[0.14em] sm:text-[11px]"
+                style={{
+                  color: activa ? TEMA_LLAVES.acento : TEMA_LLAVES.subtitulo,
+                }}
               >
-                <p
-                  className="mb-2 shrink-0 truncate text-center text-[10px] font-semibold uppercase tracking-[0.14em] sm:text-[11px]"
-                  style={{
-                    color: activa ? TEMA_LLAVES.acento : TEMA_LLAVES.subtitulo,
-                  }}
-                >
-                  {RONDA_CUADRO_LABELS[columna.fase] ?? columna.fase}
-                </p>
-                <div className="flex min-h-0 flex-1 flex-col">
-                  {columna.partidos.map((partido) => (
-                    <div
-                      key={partido.id}
-                      className="flex min-h-0 flex-1 items-center"
-                    >
-                      <TarjetaPartido
-                        partido={partido}
-                        resaltado={activa}
-                        isAdmin={isAdmin}
-                        onCargarResultado={onCargarResultado}
-                        onProgramarPartido={onProgramarPartido}
-                        cardRef={(el) => {
-                          if (el) nodosRef.current.set(String(partido.id), el);
-                          else nodosRef.current.delete(String(partido.id));
-                        }}
-                      />
-                    </div>
-                  ))}
-                  {esUltima && columna.fase === "Final" && columna.partidos[0] ? (
-                    <TarjetaCampeon partidoFinal={columna.partidos[0]} />
-                  ) : null}
-                </div>
-              </div>
+                {RONDA_CUADRO_LABELS[columna.fase] ?? columna.fase}
+              </p>
             );
           })}
         </div>
+
+        <div
+          className="relative z-10 grid w-full content-start items-start gap-x-4 gap-y-4 pointer-events-none"
+          style={{
+            gridTemplateColumns: columnasGrid,
+            gridTemplateRows: `repeat(${filasArbol}, min-content)`,
+            gridAutoRows: "min-content",
+            alignContent: "start",
+          }}
+        >
+          {columnas.map((columna, indiceColumna) => {
+            const activa = rondaResaltada === columna.fase;
+            const esUltima = indiceColumna === columnas.length - 1;
+            const spanFila = filasArbol / columna.partidos.length;
+
+            return columna.partidos.map((partido, indicePartido) => {
+              const filaInicio = indicePartido * spanFila + 1;
+              const filaFin = (indicePartido + 1) * spanFila + 1;
+
+              return (
+                <div
+                  key={partido.id}
+                  className={`w-full min-w-0 self-center ${
+                    esUltima ? "" : "pr-1 sm:pr-3"
+                  }`}
+                  style={{
+                    gridColumn: indiceColumna + 1,
+                    gridRow: `${filaInicio} / ${filaFin}`,
+                    alignSelf: indiceColumna === 0 ? "start" : "center",
+                  }}
+                >
+                  <div className="pointer-events-auto w-full min-w-0">
+                    <TarjetaPartidoTenis
+                      partido={aDatosTarjeta(partido)}
+                      isAdmin={isAdmin}
+                      resaltado={activa}
+                      compacto
+                      casilleroPendiente="esperando-rival"
+                      cardRef={(el) => {
+                        if (el) nodosRef.current.set(String(partido.id), el);
+                        else nodosRef.current.delete(String(partido.id));
+                      }}
+                      onCargarResultado={() => onCargarResultado(partido)}
+                      onProgramarPartido={() => onProgramarPartido(partido)}
+                    />
+                  </div>
+                </div>
+              );
+            });
+          })}
+        </div>
+
+        {mostrarCampeon && partidoFinal ? (
+          <div
+            className="relative z-10 mt-2 grid w-full gap-x-4 pointer-events-none"
+            style={{ gridTemplateColumns: columnasGrid }}
+          >
+            <div
+              className="pointer-events-auto"
+              style={{ gridColumn: columnas.length }}
+            >
+              <TarjetaCampeon partidoFinal={partidoFinal} />
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );

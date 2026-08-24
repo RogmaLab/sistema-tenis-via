@@ -111,13 +111,14 @@ export interface JugadorRanking extends Jugador {
   puntos: number;
 }
 
-// Tabla intermedia que relaciona jugadores con el torneo en el que están
-// inscriptos (relación muchos a muchos entre "torneos" y "jugadores").
+// Tabla intermedia torneo ↔ jugador. Unicidad: (torneo_id, jugador_id, categoria).
+// `categoria` es el cuadro de ese torneo (independiente de jugadores.categoria).
 export interface TorneoJugador {
   id: string;
   torneo_id: string;
   jugador_id: string;
-  categoria: string | null;
+  categoria: string;
+  clasificado: boolean;
   created_at: string;
 }
 
@@ -162,8 +163,10 @@ export interface Partido {
   resultado: string | null;
   estado: EstadoPartido;
   fase: string;
+  /** Cuadro del torneo (ej. 4ta). Segmenta clasificación y cuadro por categoría. */
+  categoria: string | null;
   cancha: string | null;
-  fecha_horario: string | null; // ISO datetime string (timestamptz), ej: "2026-09-12T18:30:00.000Z"
+  fecha_programada: string | null; // timestamptz ISO
   siguiente_partido_id: string | null;
   created_at: string;
 }

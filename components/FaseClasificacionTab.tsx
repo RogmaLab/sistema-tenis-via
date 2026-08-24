@@ -1,31 +1,34 @@
 "use client";
 
 import { useMemo, useState, type Dispatch, type SetStateAction } from "react";
-import { Shuffle } from "lucide-react";
+import { Pencil, Plus, Shuffle, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
-  SLOT_BYE,
   esSlotBye,
   guardarCrucesDesdeDraft,
   hayByeVsByeEnDraft,
-  idsDuplicadosEnDraft,
-  potenciaDeDosSuperior,
+  inscriptosConPaseDirecto,
   sortearCrucesDraft,
   type CruceDraft,
 } from "@/lib/motor-torneo";
 import type { Jugador } from "@/lib/types";
+import { ModalEditarClasificacion } from "@/components/ModalEditarClasificacion";
+import { TarjetaPartidoTenis } from "@/components/TarjetaPartidoTenis";
 
 interface PartidoClasificacionVista {
   id: string;
   resultado: string | null;
   estado: string;
   ganador_id: string | null;
+  cancha: string | null;
+  fecha_programada: string | null;
   jugador_1: { id: string; nombre_completo: string } | null;
   jugador_2: { id: string; nombre_completo: string } | null;
 }
 
 interface FaseClasificacionTabProps {
   torneoId: string;
+  categoriaTorneo: string;
   categoriaLabel: string;
   isAdmin: boolean;
   isLoadingPartidos: boolean;
@@ -34,6 +37,8 @@ interface FaseClasificacionTabProps {
   crucesDraft: CruceDraft[];
   setCrucesDraft: Dispatch<SetStateAction<CruceDraft[]>>;
   onGuardados: () => Promise<void>;
+  onCargarResultado?: (partido: PartidoClasificacionVista) => void;
+  onProgramarPartido?: (partido: PartidoClasificacionVista) => void;
 }
 
 function etiquetaSlot(slotId: string, inscriptos: Jugador[]) {
@@ -46,7 +51,7 @@ function etiquetaSlot(slotId: string, inscriptos: Jugador[]) {
 
 function claseSelect(marcadoRojo: boolean, fijado: boolean) {
   const base =
-    "w-full min-h-11 rounded-lg border bg-background px-3 py-2 text-sm outline-none transition focus:ring-2 focus:ring-accent/40";
+    "w-full min-h-9 rounded-md border bg-background px-2 py-1.5 text-xs outline-none transition focus:ring-2 focus:ring-accent/40";
   if (fijado) {
     return `${base} cursor-default border-border text-foreground`;
   }
@@ -56,8 +61,12 @@ function claseSelect(marcadoRojo: boolean, fijado: boolean) {
   return `${base} border-border text-foreground focus:border-accent`;
 }
 
+const GRILLA_CRUCES =
+  "grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3";
+
 export function FaseClasificacionTab({
   torneoId,
+  categoriaTorneo,
   categoriaLabel,
   isAdmin,
   isLoadingPartidos,
@@ -66,9 +75,12 @@ export function FaseClasificacionTab({
   crucesDraft,
   setCrucesDraft,
   onGuardados,
+  onCargarResultado,
+  onProgramarPartido,
 }: FaseClasificacionTabProps) {
   const [vistaFijada, setVistaFijada] = useState(false);
   const [isConfirmando, setIsConfirmando] = useState(false);
+  const [isModalEditarOpen, setIsModalEditarOpen] = useState(false);
 
   const inscriptosOrdenados = useMemo(
     () =>
@@ -78,16 +90,26 @@ export function FaseClasificacionTab({
     [inscriptos]
   );
 
-  const duplicados = useMemo(
-    () => idsDuplicadosEnDraft(crucesDraft),
-    [crucesDraft]
-  );
   const byeVsBye = hayByeVsByeEnDraft(crucesDraft);
-  const potencia = potenciaDeDosSuperior(Math.max(inscriptos.length, 2));
-  const cantidadByes = Math.max(0, potencia - inscriptos.length);
+  const hayAutocruz = crucesDraft.some(
+    (cruce) =>
+      Boolean(cruce.jugador_1_id) &&
+      cruce.jugador_1_id === cruce.jugador_2_id
+  );
+  const pasesDirectosDraft = inscriptosConPaseDirecto(inscriptos, crucesDraft);
 
   const partidosGuardados = partidosClasificacion.length > 0;
   const mostrarFijado = partidosGuardados || vistaFijada;
+  const idsEnPartidosGuardados = new Set(
+    partidosClasificacion.flatMap((partido) =>
+      [partido.jugador_1?.id, partido.jugador_2?.id].filter(
+        (id): id is string => Boolean(id)
+      )
+    )
+  );
+  const pasesConfirmados = inscriptos.filter(
+    (jugador) => !idsEnPartidosGuardados.has(jugador.id)
+  );
 
   function handleSortear() {
     if (inscriptos.length < 2) {
@@ -122,13 +144,40 @@ export function FaseClasificacionTab({
     );
   }
 
+  function handleAgregarCruceDraft() {
+    setCrucesDraft((previos) => [
+      ...previos,
+      {
+        id: `draft-${crypto.randomUUID()}`,
+        jugador_1_id: "",
+        jugador_2_id: "",
+      },
+    ]);
+  }
+
+  function handleEliminarCruceDraft(cruceId: string) {
+    setCrucesDraft((previos) => previos.filter((cruce) => cruce.id !== cruceId));
+  }
+
   async function handleConfirmar() {
-    if (duplicados.size > 0) {
-      toast.error("Hay jugadores repetidos en más de un cruce.");
-      return;
-    }
     if (byeVsBye) {
       toast.error("No se puede confirmar un cruce BYE vs BYE.");
+      return;
+    }
+    if (hayAutocruz) {
+      toast.error("Un jugador no puede jugar contra sí mismo.");
+      return;
+    }
+    if (
+      crucesDraft.some(
+        (cruce) =>
+          !cruce.jugador_1_id ||
+          !cruce.jugador_2_id ||
+          esSlotBye(cruce.jugador_1_id) ||
+          esSlotBye(cruce.jugador_2_id)
+      )
+    ) {
+      toast.error("Cada cruce de clasificación necesita dos jugadores.");
       return;
     }
 
@@ -136,6 +185,7 @@ export function FaseClasificacionTab({
     try {
       const resultado = await guardarCrucesDesdeDraft(
         torneoId,
+        categoriaTorneo,
         inscriptos,
         crucesDraft
       );
@@ -156,6 +206,8 @@ export function FaseClasificacionTab({
   }
 
   function slotMarcadoRojo(slotId: string, cruce: CruceDraft) {
+    if (!slotId) return true;
+    if (cruce.jugador_1_id === cruce.jugador_2_id) return true;
     if (esSlotBye(slotId)) {
       return (
         byeVsBye &&
@@ -163,7 +215,7 @@ export function FaseClasificacionTab({
         esSlotBye(cruce.jugador_2_id)
       );
     }
-    return duplicados.has(slotId);
+    return false;
   }
 
   if (isLoadingPartidos) {
@@ -184,6 +236,8 @@ export function FaseClasificacionTab({
           id1: partido.jugador_1?.id ?? null,
           id2: partido.jugador_2?.id ?? null,
           resultado: partido.resultado,
+          estado: partido.estado,
+          partido,
         }))
       : crucesDraft.map((cruce) => ({
           id: cruce.id,
@@ -193,100 +247,178 @@ export function FaseClasificacionTab({
           id1: esSlotBye(cruce.jugador_1_id) ? null : cruce.jugador_1_id,
           id2: esSlotBye(cruce.jugador_2_id) ? null : cruce.jugador_2_id,
           resultado: null as string | null,
+          estado: "Pendiente",
+          partido: null as PartidoClasificacionVista | null,
         }));
 
     return (
+      <>
       <section>
-        <header className="mb-4">
-          <h2 className="text-lg font-semibold text-foreground">
-            Cruces de clasificación
-          </h2>
-          <p className="mt-1 text-sm text-foreground/50">
-            {categoriaLabel} · vista confirmada
-          </p>
-        </header>
-        <ul className="space-y-3">
-          {crucesFijos.map((cruce, indice) => (
-            <li
-              key={cruce.id}
-              className="rounded-2xl border border-border bg-surface p-4"
+        <header className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-foreground">
+              Cruces de clasificación
+            </h2>
+            <p className="mt-1 text-sm text-foreground/50">
+              {categoriaLabel} · {crucesFijos.length} partido
+              {crucesFijos.length === 1 ? "" : "s"}
+            </p>
+          </div>
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => setIsModalEditarOpen(true)}
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border bg-surface px-4 py-2.5 text-sm font-semibold text-foreground/80 transition hover:bg-background hover:text-foreground active:scale-[0.98]"
             >
-              <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-foreground/40">
-                Cruce {indice + 1}
-                {cruce.resultado === "W.O." ? " · W.O." : ""}
-              </p>
-              <div className="flex flex-col gap-2">
-                <p
-                  className={`rounded-lg border border-border bg-background px-3 py-2.5 text-sm font-medium ${
-                    cruce.ganadorId && cruce.ganadorId === cruce.id1
-                      ? "text-accent"
-                      : "text-foreground"
+              <Pencil size={16} />
+              Editar Cruces Manualmente
+            </button>
+          )}
+        </header>
+        <ul className={GRILLA_CRUCES}>
+          {crucesFijos.map((cruce, indice) =>
+            partidosGuardados && cruce.partido ? (
+              <li key={cruce.id}>
+                <TarjetaPartidoTenis
+                  partido={{
+                    id: cruce.partido.id,
+                    estado: cruce.partido.estado,
+                    resultado: cruce.partido.resultado,
+                    ganador_id: cruce.partido.ganador_id,
+                    fecha_programada: cruce.partido.fecha_programada,
+                    cancha: cruce.partido.cancha,
+                    jugador_1: cruce.partido.jugador_1,
+                    jugador_2: cruce.partido.jugador_2,
+                  }}
+                  isAdmin={isAdmin}
+                  etiqueta={`Cruce ${indice + 1}${
+                    cruce.resultado === "W.O." ? " · W.O." : ""
                   }`}
-                >
-                  {cruce.etiqueta1}
+                  onCargarResultado={
+                    onCargarResultado
+                      ? () => onCargarResultado(cruce.partido!)
+                      : undefined
+                  }
+                  onProgramarPartido={
+                    onProgramarPartido
+                      ? () => onProgramarPartido(cruce.partido!)
+                      : undefined
+                  }
+                />
+              </li>
+            ) : (
+              <li
+                key={cruce.id}
+                className="rounded-xl border border-border bg-surface p-2.5"
+              >
+                <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-foreground/40">
+                  Cruce {indice + 1}
                 </p>
-                <p className="text-center text-xs text-foreground/40">vs</p>
-                <p
-                  className={`rounded-lg border border-border bg-background px-3 py-2.5 text-sm font-medium ${
-                    cruce.ganadorId && cruce.ganadorId === cruce.id2
-                      ? "text-accent"
-                      : "text-foreground"
-                  }`}
-                >
-                  {cruce.etiqueta2}
-                </p>
-              </div>
-            </li>
-          ))}
+                <div className="flex flex-col gap-1">
+                  <p className="truncate rounded-md border border-border bg-background px-2 py-1 text-xs font-medium text-foreground">
+                    {cruce.etiqueta1}
+                  </p>
+                  <p className="py-0 text-center text-[10px] font-medium uppercase tracking-widest text-foreground/30">
+                    vs
+                  </p>
+                  <p className="truncate rounded-md border border-border bg-background px-2 py-1 text-xs font-medium text-foreground">
+                    {cruce.etiqueta2}
+                  </p>
+                </div>
+              </li>
+            )
+          )}
         </ul>
+        {pasesConfirmados.length > 0 && (
+          <div className="mt-4 rounded-xl border border-border bg-surface px-4 py-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-foreground/40">
+              Todavía sin partido ({pasesConfirmados.length})
+            </p>
+            <p className="mt-1 text-sm text-foreground/70">
+              {pasesConfirmados
+                .map((jugador) => jugador.nombre_completo)
+                .join(", ")}
+            </p>
+          </div>
+        )}
       </section>
+      {isModalEditarOpen && (
+        <ModalEditarClasificacion
+          torneoId={torneoId}
+          categoria={categoriaTorneo}
+          inscriptos={inscriptos}
+          partidos={partidosClasificacion}
+          onCerrar={() => setIsModalEditarOpen(false)}
+          onGuardado={onGuardados}
+        />
+      )}
+      </>
     );
   }
 
   if (crucesDraft.length === 0) {
     return (
+      <>
       <section className="flex min-h-[280px] flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-surface px-6 py-16 text-center">
         <p className="text-base font-semibold text-foreground/70">
           Todavía no hay cruces sorteados
         </p>
         <p className="mt-2 max-w-sm text-sm text-foreground/40">
-          Clasificación de {categoriaLabel}. El sorteo completa el cuadro a{" "}
-          {potencia} asientos
-          {cantidadByes > 0
-            ? ` e inyecta ${cantidadByes} BYE${cantidadByes === 1 ? "" : "s"}`
-            : ""}
-          .
+          Con {inscriptos.length} inscriptos se arman{" "}
+          {Math.floor(inscriptos.length / 2)} cruces. Si queda uno suelto, se
+          acomoda con Editar Cruces Manualmente.
         </p>
         {inscriptos.length < 2 ? (
           <p className="mt-4 text-sm text-foreground/40">
             Se necesitan al menos 2 inscriptos en esta categoría.
           </p>
         ) : isAdmin ? (
-          <button
-            type="button"
-            onClick={handleSortear}
-            className="mt-6 inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-hover active:scale-[0.98]"
-          >
-            <Shuffle size={16} />
-            Sortear Cruces Aleatorios
-          </button>
+          <div className="mt-6 flex flex-col items-center gap-3 sm:flex-row">
+            <button
+              type="button"
+              onClick={handleSortear}
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-hover active:scale-[0.98]"
+            >
+              <Shuffle size={16} />
+              Sortear Cruces Aleatorios
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsModalEditarOpen(true)}
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border bg-surface px-5 py-2.5 text-sm font-semibold text-foreground/80 transition hover:bg-background hover:text-foreground active:scale-[0.98]"
+            >
+              <Pencil size={16} />
+              Editar Cruces Manualmente
+            </button>
+          </div>
         ) : (
           <p className="mt-4 text-sm text-foreground/40">
             El administrador todavía no sorteó esta categoría.
           </p>
         )}
       </section>
+      {isModalEditarOpen && (
+        <ModalEditarClasificacion
+          torneoId={torneoId}
+          categoria={categoriaTorneo}
+          inscriptos={inscriptos}
+          partidos={partidosClasificacion}
+          onCerrar={() => setIsModalEditarOpen(false)}
+          onGuardado={onGuardados}
+        />
+      )}
+      </>
     );
   }
 
   const opciones = (
     <>
+      <option value="">Elegí un jugador</option>
       {inscriptosOrdenados.map((jugador) => (
         <option key={jugador.id} value={jugador.id}>
           {jugador.nombre_completo}
         </option>
       ))}
-      <option value={SLOT_BYE}>BYE</option>
     </>
   );
 
@@ -297,29 +429,41 @@ export function FaseClasificacionTab({
           Borrador de cruces
         </h2>
         <p className="mt-1 text-sm text-foreground/50">
-          {categoriaLabel}. Podés intercambiar jugadores o asignar el BYE al
-          cabeza de serie.
+          {categoriaLabel}. Armá los partidos que quieras: un jugador puede
+          repetir. El sorteo es solo un atajo.
         </p>
       </header>
 
-      {(duplicados.size > 0 || byeVsBye) && (
+      {(hayAutocruz || byeVsBye) && (
         <p className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-400">
-          {duplicados.size > 0
-            ? "Hay jugadores seleccionados en más de un cruce. El borde rojo marca los duplicados."
+          {hayAutocruz
+            ? "Hay un partido con el mismo jugador en ambos lados."
             : "Hay un cruce BYE vs BYE. Cambiá uno de los asientos."}
         </p>
       )}
 
-      <ul className="space-y-3">
+      <ul className={GRILLA_CRUCES}>
         {crucesDraft.map((cruce, indice) => (
           <li
             key={cruce.id}
-            className="rounded-2xl border border-border bg-surface p-4"
+            className="rounded-xl border border-border bg-surface p-2.5"
           >
-            <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-foreground/40">
-              Cruce {indice + 1}
-            </p>
-            <div className="flex flex-col gap-2">
+            <div className="mb-1.5 flex items-center justify-between">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-foreground/40">
+                Cruce {indice + 1}
+              </p>
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={() => handleEliminarCruceDraft(cruce.id)}
+                  aria-label={`Eliminar cruce ${indice + 1}`}
+                  className="inline-flex items-center justify-center rounded-md p-1 text-red-500/70 transition hover:bg-red-500/10 hover:text-red-500"
+                >
+                  <Trash2 size={14} />
+                </button>
+              )}
+            </div>
+            <div className="flex flex-col gap-1">
               <select
                 value={cruce.jugador_1_id}
                 disabled={!isAdmin}
@@ -338,7 +482,9 @@ export function FaseClasificacionTab({
               >
                 {opciones}
               </select>
-              <p className="text-center text-xs text-foreground/40">vs</p>
+              <p className="py-0 text-center text-[10px] font-medium uppercase tracking-widest text-foreground/30">
+                vs
+              </p>
               <select
                 value={cruce.jugador_2_id}
                 disabled={!isAdmin}
@@ -362,8 +508,30 @@ export function FaseClasificacionTab({
         ))}
       </ul>
 
+      {pasesDirectosDraft.length > 0 && (
+        <div className="mt-4 rounded-xl border border-border bg-surface px-4 py-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-foreground/40">
+            Todavía sin partido ({pasesDirectosDraft.length})
+          </p>
+          <p className="mt-1 text-sm text-foreground/70">
+            {pasesDirectosDraft
+              .map((jugador) => jugador.nombre_completo)
+              .join(", ")}
+          </p>
+        </div>
+      )}
+
       {isAdmin && (
         <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
+          <button
+            type="button"
+            onClick={handleAgregarCruceDraft}
+            disabled={isConfirmando}
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-surface px-4 py-2.5 text-sm font-semibold text-foreground/80 transition hover:bg-background active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Plus size={16} />
+            Agregar Partido
+          </button>
           <button
             type="button"
             onClick={handleVolverASortear}
@@ -376,7 +544,13 @@ export function FaseClasificacionTab({
             type="button"
             onClick={handleConfirmar}
             disabled={
-              isConfirmando || duplicados.size > 0 || byeVsBye || !isAdmin
+              isConfirmando ||
+              byeVsBye ||
+              hayAutocruz ||
+              !isAdmin ||
+              crucesDraft.some(
+                (cruce) => !cruce.jugador_1_id || !cruce.jugador_2_id
+              )
             }
             className="inline-flex min-h-11 items-center justify-center rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-hover active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
           >

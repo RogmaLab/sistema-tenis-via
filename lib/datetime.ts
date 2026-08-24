@@ -26,11 +26,28 @@ export function formatFechaHorario(fechaHorario: string) {
   return `${fechaTexto} · ${horaTexto}hs`;
 }
 
-/** Formato compacto 24h para el bracket: "23 Feb, 22:00 hs" */
-export function formatFechaCuadro(fechaHorario: string | null | undefined) {
-  if (!fechaHorario) return "";
+/** Formato badge de programación: "Sáb 10:00 hs" */
+export function formatProgramacionPartido(fechaProgramada: string) {
+  const fecha = new Date(fechaProgramada);
+  if (Number.isNaN(fecha.getTime())) return "";
 
-  const fecha = new Date(fechaHorario);
+  const dia = fecha
+    .toLocaleDateString("es-AR", { weekday: "short" })
+    .replace(".", "");
+  const hora = fecha.toLocaleTimeString("es-AR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+
+  return `${dia.charAt(0).toUpperCase()}${dia.slice(1)} ${hora} hs`;
+}
+
+/** Formato compacto 24h para el bracket: "23 Feb, 22:00 hs" */
+export function formatFechaCuadro(fechaProgramada: string | null | undefined) {
+  if (!fechaProgramada) return "";
+
+  const fecha = new Date(fechaProgramada);
   if (Number.isNaN(fecha.getTime())) return "";
 
   const meses = [
@@ -52,13 +69,11 @@ export function formatFechaCuadro(fechaHorario: string | null | undefined) {
   return `${fecha.getDate()} ${meses[fecha.getMonth()]}, ${pad(fecha.getHours())}:${pad(fecha.getMinutes())} hs`;
 }
 
-// Convierte un timestamp ISO (lo que devuelve Supabase) al formato que
-// espera el input `datetime-local` ("YYYY-MM-DDTHH:mm", en hora local del
-// navegador). Función pura: mismo input, mismo output, sin efectos.
-export function toDatetimeLocalValue(fechaHorario: string | null) {
-  if (!fechaHorario) return "";
+// Convierte un timestamp ISO al formato del input `datetime-local`.
+export function toDatetimeLocalValue(fechaProgramada: string | null) {
+  if (!fechaProgramada) return "";
 
-  const fecha = new Date(fechaHorario);
+  const fecha = new Date(fechaProgramada);
   if (Number.isNaN(fecha.getTime())) return "";
 
   const pad = (valor: number) => String(valor).padStart(2, "0");
@@ -75,17 +90,17 @@ export function fromDatetimeLocalValue(valor: string): string | null {
   return Number.isNaN(fecha.getTime()) ? null : fecha.toISOString();
 }
 
-export function toDateInputValue(fechaHorario: string | null) {
-  const local = toDatetimeLocalValue(fechaHorario);
+export function toDateInputValue(fechaProgramada: string | null) {
+  const local = toDatetimeLocalValue(fechaProgramada);
   return local ? local.slice(0, 10) : "";
 }
 
-export function toTimeInputValue(fechaHorario: string | null) {
-  const local = toDatetimeLocalValue(fechaHorario);
+export function toTimeInputValue(fechaProgramada: string | null) {
+  const local = toDatetimeLocalValue(fechaProgramada);
   return local ? local.slice(11, 16) : "";
 }
 
-/** Junta date + time locales en un ISO para `partidos.fecha_horario`. */
+/** Junta date + time locales en un ISO para `partidos.fecha_programada`. */
 export function fromDateAndTimeValues(
   fecha: string,
   hora: string

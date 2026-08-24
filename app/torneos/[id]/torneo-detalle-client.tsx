@@ -12,7 +12,6 @@ import {
 } from "react";
 import {
   ArrowLeft,
-  Pencil,
   Shuffle,
   Trash2,
   Trophy,
@@ -24,8 +23,14 @@ import {
   actualizarResultadoPartidoConPropagacion,
   generarCrucesClasificacion,
   generarCuadroFinal,
+  planClasificacionPreliminar,
   type CruceDraft,
 } from "@/lib/motor-torneo";
+import {
+  fetchPartidosTorneo,
+  partidosClasificacionDe,
+  partidosCuadroDe,
+} from "@/lib/partidos-torneo";
 import {
   CANCHAS_TORNEO,
   CATEGORIAS_JUGADOR,
@@ -44,36 +49,20 @@ import {
 } from "@/lib/datetime";
 import {
   hayCuadroEliminatorio,
-  partidosDelCuadroPorJugadores,
   rondasActivasDelCuadro,
   rondaMasAvanzadaConActividad,
-  idsRondasPosterioresDe,
   RONDA_CUADRO_LABELS,
 } from "@/lib/adaptar-cuadro-torneo";
 import { CuadroLlaves } from "@/components/CuadroLlaves";
 import { FaseClasificacionTab } from "@/components/FaseClasificacionTab";
-import { ModalEditarPrimeraRonda } from "@/components/ModalEditarPrimeraRonda";
 import { ModalProgramarPartido } from "@/components/ModalProgramarPartido";
+import {
+  categoriaDeInscripcion,
+  fetchInscriptosTorneo,
+  inscribirJugadoresEnTorneo,
+  type InscriptoTorneo,
+} from "@/lib/inscripciones-torneo";
 import { useAuth } from "@/components/auth-provider";
-
-// Fila de la tabla intermedia "torneo_jugadores" con los datos del jugador
-// embebidos gracias a la FK jugador_id -> jugadores.id (select anidado de
-// Supabase/PostgREST, sin necesidad de un join manual en el cliente).
-interface Inscripto {
-  id: string;
-  categoria: string | null;
-  jugador: {
-    id: string;
-    nombre_completo: string;
-    categoria: string;
-    genero: string;
-  };
-}
-
-function categoriaDeCompetencia(inscripto: Inscripto) {
-  const asignada = inscripto.categoria?.trim();
-  return asignada || inscripto.jugador.categoria;
-}
 
 // Fila de "partidos" con jugador_1 / jugador_2 embebidos vía sus FKs.
 interface PartidoConJugadores {
@@ -82,8 +71,9 @@ interface PartidoConJugadores {
   estado: EstadoPartido;
   ganador_id: string | null;
   fase: string;
+  categoria: string | null;
   cancha: string | null;
-  fecha_horario: string | null;
+  fecha_programada: string | null;
   siguiente_partido_id: string | null;
   jugador_1: { id: string; nombre_completo: string } | null;
   jugador_2: { id: string; nombre_completo: string } | null;
@@ -128,7 +118,7 @@ export function TorneoDetalleClient() {
   const [torneo, setTorneo] = useState<Torneo | null>(null);
   const [isLoadingTorneo, setIsLoadingTorneo] = useState(true);
 
-  const [inscriptos, setInscriptos] = useState<Inscripto[]>([]);
+  const [inscriptos, setInscriptos] = useState<InscriptoTorneo[]>([]);
   const [isLoadingInscriptos, setIsLoadingInscriptos] = useState(true);
   const [todosLosJugadores, setTodosLosJugadores] = useState<Jugador[]>([]);
   const [isLoadingJugadores, setIsLoadingJugadores] = useState(true);
@@ -155,8 +145,6 @@ export function TorneoDetalleClient() {
   const [ganadorManualId, setGanadorManualId] = useState<string | null>(null);
   const [partidoEditando, setPartidoEditando] =
     useState<PartidoConJugadores | null>(null);
-  const [isModalEditarCuadroOpen, setIsModalEditarCuadroOpen] =
-    useState(false);
   const [pestanaActiva, setPestanaActiva] =
     useState<PestanaDetalle>("jugadores");
   const [categoriaFiltro, setCategoriaFiltro] = useState("Todas");
@@ -186,39 +174,10 @@ export function TorneoDetalleClient() {
   }, [torneoId, supabase]);
 
   const fetchInscriptosDesdeSupabase = useCallback(async () => {
-    const consulta = () =>
-      supabase
-        .from("torneo_jugadores")
-        .select(
-          "id, categoria, jugador:jugador_id ( id, nombre_completo, categoria, genero )"
-        )
-        .eq("torneo_id", torneoId)
-        .order("created_at", { ascending: true });
-
-    let { data, error } = await consulta();
-
-    if (error?.message.toLowerCase().includes("categoria")) {
-      const fallback = await supabase
-        .from("torneo_jugadores")
-        .select(
-          "id, jugador:jugador_id ( id, nombre_completo, categoria, genero )"
-        )
-        .eq("torneo_id", torneoId)
-        .order("created_at", { ascending: true });
-      data = (fallback.data ?? []).map((fila) => ({
-        ...fila,
-        categoria: null,
-      }));
-      error = fallback.error;
-    }
-
-    if (error) {
-      console.error("Error al cargar los inscriptos:", error.message);
-      return null;
-    }
-
-    return (data as unknown as Inscripto[]) ?? [];
-  }, [torneoId, supabase]);
+    const { data, error } = await fetchInscriptosTorneo({ torneoId });
+    if (error) return null;
+    return data;
+  }, [torneoId]);
 
   const fetchTodosLosJugadoresDesdeSupabase = useCallback(async () => {
     const { data, error } = await supabase
@@ -235,21 +194,13 @@ export function TorneoDetalleClient() {
   }, [supabase]);
 
   const fetchPartidosDesdeSupabase = useCallback(async () => {
-    const { data, error } = await supabase
-      .from("partidos")
-      .select(
-        "id, resultado, estado, ganador_id, fase, cancha, fecha_horario, siguiente_partido_id, jugador_1:jugador_1_id ( id, nombre_completo ), jugador_2:jugador_2_id ( id, nombre_completo )"
-      )
-      .eq("torneo_id", torneoId)
-      .order("created_at", { ascending: true });
-
+    const { data, error } = await fetchPartidosTorneo(torneoId);
     if (error) {
       console.error("Error al cargar los partidos:", error.message);
       return null;
     }
-
-    return (data as unknown as PartidoConJugadores[]) ?? [];
-  }, [torneoId, supabase]);
+    return data as PartidoConJugadores[];
+  }, [torneoId]);
 
   // Wrappers que sí actualizan estado: los usan los handlers (inscribir,
   // cargar resultado, generar cruces, editar/eliminar partido). Como esos
@@ -257,7 +208,7 @@ export function TorneoDetalleClient() {
   // la regla react-hooks/set-state-in-effect.
   const cargarInscriptos = useCallback(async () => {
     const data = await fetchInscriptosDesdeSupabase();
-    if (data) setInscriptos(data);
+    setInscriptos(data ?? []);
   }, [fetchInscriptosDesdeSupabase]);
 
   const cargarPartidos = useCallback(async () => {
@@ -278,6 +229,19 @@ export function TorneoDetalleClient() {
   useEffect(() => {
     let ignore = false;
 
+    setTorneo(null);
+    setInscriptos([]);
+    setPartidos([]);
+    setTodosLosJugadores([]);
+    setCategoriaFiltro("Todas");
+    setGeneroFiltro("Todos");
+    setCrucesDraft([]);
+    setRondaCuadroManual(null);
+    setIsLoadingTorneo(true);
+    setIsLoadingInscriptos(true);
+    setIsLoadingPartidos(true);
+    setIsLoadingJugadores(true);
+
     Promise.all([
       fetchTorneoDesdeSupabase(),
       fetchInscriptosDesdeSupabase(),
@@ -289,13 +253,13 @@ export function TorneoDetalleClient() {
       setTorneo(torneoData);
       setIsLoadingTorneo(false);
 
-      if (inscriptosData) setInscriptos(inscriptosData);
+      setInscriptos(inscriptosData ?? []);
       setIsLoadingInscriptos(false);
 
       setTodosLosJugadores(jugadoresData ?? []);
       setIsLoadingJugadores(false);
 
-      if (partidosData) setPartidos(partidosData);
+      setPartidos(partidosData ?? []);
       setIsLoadingPartidos(false);
     });
 
@@ -303,6 +267,7 @@ export function TorneoDetalleClient() {
       ignore = true;
     };
   }, [
+    torneoId,
     fetchTorneoDesdeSupabase,
     fetchInscriptosDesdeSupabase,
     fetchTodosLosJugadoresDesdeSupabase,
@@ -316,15 +281,15 @@ export function TorneoDetalleClient() {
     setIsLoadingJugadores(false);
   }, [fetchTodosLosJugadoresDesdeSupabase]);
 
-  // Lista del club entero. Solo se oculta quien ya compete en la categoría
-  // destino; si está inscripto en otra, sigue apareciendo para cruzarlo.
+  // Club entero. Se oculta quien ya está anotado en ESTA categoría de torneo
+  // (torneo_jugadores.categoria). La ficha del club no entra en el filtro.
   const jugadoresDisponibles = useMemo(() => {
     const idsEnEstaCategoria = new Set(
       inscriptos
         .filter(
           (inscripto) =>
             Boolean(categoriaInscribir) &&
-            categoriaDeCompetencia(inscripto) === categoriaInscribir
+            inscripto.categoria_inscripcion === categoriaInscribir
         )
         .map((inscripto) => inscripto.jugador.id)
     );
@@ -343,62 +308,65 @@ export function TorneoDetalleClient() {
     );
   }, [jugadoresDisponibles, busquedaInscribir]);
 
-  const categoriasInscriptos = useMemo(() => {
-    const base =
-      generoFiltro === "Todos"
-        ? inscriptos
-        : inscriptos.filter(
-            (inscripto) => inscripto.jugador.genero === generoFiltro
-          );
-    const unicas = [
-      ...new Set(
-        base
-          .map((inscripto) => categoriaDeCompetencia(inscripto))
-          .filter((categoria) => Boolean(categoria))
-      ),
-    ].sort((a, b) => a.localeCompare(b, "es"));
-    return ["Todas", ...unicas];
-  }, [inscriptos, generoFiltro]);
+  // Pills de navegación: categorías habilitadas del torneo (no la ficha del club).
+  const categoriasFiltro = useMemo(() => {
+    return ["Todas", ...(torneo?.categorias ?? [])];
+  }, [torneo]);
+
+  useEffect(() => {
+    if (categoriaFiltro === "Todas") return;
+    if (!categoriasFiltro.includes(categoriaFiltro)) {
+      setCategoriaFiltro("Todas");
+    }
+  }, [categoriasFiltro, categoriaFiltro]);
 
   const inscriptosFiltrados = useMemo(() => {
     return inscriptos.filter((inscripto) => {
       const pasaGenero =
         generoFiltro === "Todos" || inscripto.jugador.genero === generoFiltro;
-      const pasaCategoria =
-        categoriaFiltro === "Todas" ||
-        categoriaDeCompetencia(inscripto) === categoriaFiltro;
-      return pasaGenero && pasaCategoria;
+
+      if (!pasaGenero) return false;
+
+      if (categoriaFiltro === "Todas") return true;
+
+      // torneo_jugadores.categoria — PROHIBIDO usar inscripto.jugador.categoria
+      return inscripto.categoria_inscripcion === categoriaFiltro;
     });
   }, [inscriptos, generoFiltro, categoriaFiltro]);
 
+  const totalInscriptosEnCategoria = useMemo(() => {
+    if (categoriaFiltro === "Todas") return inscriptos.length;
+    return inscriptos.filter(
+      (inscripto) => inscripto.categoria_inscripcion === categoriaFiltro
+    ).length;
+  }, [inscriptos, categoriaFiltro]);
+
   const partidosClasificacionFiltrados = useMemo(() => {
-    const ids = new Set(
-      inscriptosFiltrados.map((inscripto) => inscripto.jugador.id)
-    );
-    return partidos.filter((partido) => {
-      if (partido.fase !== "Clasificacion") return false;
-      const j1 = partido.jugador_1?.id;
-      const j2 = partido.jugador_2?.id;
-      return Boolean((j1 && ids.has(j1)) || (j2 && ids.has(j2)));
-    });
-  }, [partidos, inscriptosFiltrados]);
+    if (categoriaFiltro === "Todas") return [];
+    return partidosClasificacionDe(partidos, categoriaFiltro);
+  }, [partidos, categoriaFiltro]);
 
   const idsJugadoresFiltrados = useMemo(
     () => inscriptosFiltrados.map((inscripto) => inscripto.jugador.id),
     [inscriptosFiltrados]
   );
 
-  const partidosCuadroCategoria = useMemo(
-    () => partidosDelCuadroPorJugadores(partidos, idsJugadoresFiltrados),
-    [partidos, idsJugadoresFiltrados]
-  );
+  const partidosCuadroCategoria = useMemo(() => {
+    if (categoriaFiltro === "Todas") return [];
+    return partidosCuadroDe(partidos, categoriaFiltro);
+  }, [partidos, categoriaFiltro]);
 
+  const planClasificacion = planClasificacionPreliminar(
+    inscriptosFiltrados.length
+  );
   const clasificacionCategoriaCompleta =
-    partidosClasificacionFiltrados.length > 0 &&
-    partidosClasificacionFiltrados.every(
-      (partido) =>
-        partido.estado === "Finalizado" && Boolean(partido.ganador_id)
-    );
+    (planClasificacion.partidos === 0 &&
+      partidosClasificacionFiltrados.length === 0) ||
+    (partidosClasificacionFiltrados.length > 0 &&
+      partidosClasificacionFiltrados.every(
+        (partido) =>
+          partido.estado === "Finalizado" && Boolean(partido.ganador_id)
+      ));
 
   const rondasCuadroDisponibles = useMemo(
     () => rondasActivasDelCuadro(partidosCuadroCategoria),
@@ -413,48 +381,6 @@ export function TorneoDetalleClient() {
     rondasCuadroDisponibles.some((fase) => fase === rondaCuadroManual)
       ? rondaCuadroManual
       : rondaCuadroSugerida;
-  const partidosDeRondaActiva = useMemo(() => {
-    if (!rondaCuadroActiva) return [];
-    return partidosCuadroCategoria.filter(
-      (partido) => partido.fase === rondaCuadroActiva
-    );
-  }, [partidosCuadroCategoria, rondaCuadroActiva]);
-  const jugadoresElegiblesCuadro = useMemo(() => {
-    const porId = new Map<string, { id: string; nombre_completo: string }>();
-    for (const inscripto of inscriptosFiltrados) {
-      porId.set(inscripto.jugador.id, {
-        id: inscripto.jugador.id,
-        nombre_completo: inscripto.jugador.nombre_completo,
-      });
-    }
-    for (const partido of [
-      ...partidosClasificacionFiltrados,
-      ...partidosDeRondaActiva,
-    ]) {
-      if (partido.jugador_1) {
-        porId.set(partido.jugador_1.id, {
-          id: partido.jugador_1.id,
-          nombre_completo: partido.jugador_1.nombre_completo,
-        });
-      }
-      if (partido.jugador_2) {
-        porId.set(partido.jugador_2.id, {
-          id: partido.jugador_2.id,
-          nombre_completo: partido.jugador_2.nombre_completo,
-        });
-      }
-    }
-    return [...porId.values()];
-  }, [
-    inscriptosFiltrados,
-    partidosClasificacionFiltrados,
-    partidosDeRondaActiva,
-  ]);
-
-  const idsRondasPosterioresCuadro = useMemo(() => {
-    if (!rondaCuadroActiva) return [];
-    return idsRondasPosterioresDe(partidosCuadroCategoria, rondaCuadroActiva);
-  }, [partidosCuadroCategoria, rondaCuadroActiva]);
 
   const hayCrucesSinGuardar =
     crucesDraft.length > 0 && partidosClasificacionFiltrados.length === 0;
@@ -532,6 +458,9 @@ export function TorneoDetalleClient() {
     setCategoriaFiltro(categoria);
     setCrucesDraft([]);
     setRondaCuadroManual(null);
+    setPartidoCargandoResultado(null);
+    setPartidoProgramando(null);
+    setPartidoEditando(null);
   }
 
   // Solo cuentan los sets donde se cargaron los games de ambos jugadores.
@@ -657,62 +586,63 @@ export function TorneoDetalleClient() {
     event.preventDefault();
     if (idsInscribir.length === 0 || !categoriaInscribir) return;
 
+    const idsPedido = [...idsInscribir];
+    const categoriaPedido = categoriaInscribir;
+
     setIsInscribiendo(true);
+    try {
+      await inscribirJugadoresEnTorneo({
+        torneoId,
+        jugadorIds: idsPedido,
+        categoria: categoriaPedido,
+      });
 
-    const idsYaEnTorneo = new Set(
-      inscriptos.map((inscripto) => inscripto.jugador.id)
-    );
-    const idsNuevos = idsInscribir.filter((id) => !idsYaEnTorneo.has(id));
-    const idsACruzar = idsInscribir.filter((id) => idsYaEnTorneo.has(id));
-
-    if (idsNuevos.length > 0) {
-      const { error } = await supabase.from("torneo_jugadores").insert(
-        idsNuevos.map((jugador_id) => ({
-          torneo_id: torneoId,
-          jugador_id,
-          categoria: categoriaInscribir,
-        }))
-      );
-      if (error) {
-        setIsInscribiendo(false);
-        console.error("Error al inscribir jugadores:", error.message);
-        toast.error(
-          error.message.toLowerCase().includes("categoria")
-            ? "Falta la columna categoria en inscripciones. Ejecutá el SQL de supabase/torneo-jugadores-categoria.sql."
-            : "No se pudieron inscribir los jugadores."
+      const inscriptosActuales = await fetchInscriptosDesdeSupabase();
+      if (!inscriptosActuales) {
+        throw new Error(
+          "La inscripción no se pudo confirmar: falló la recarga de inscriptos."
         );
-        return;
       }
-    }
 
-    if (idsACruzar.length > 0) {
-      const { error } = await supabase
-        .from("torneo_jugadores")
-        .update({ categoria: categoriaInscribir })
-        .eq("torneo_id", torneoId)
-        .in("jugador_id", idsACruzar);
-      if (error) {
-        setIsInscribiendo(false);
-        console.error("Error al cruzar jugadores de categoría:", error.message);
-        toast.error("No se pudo mover al jugador a esta categoría.");
-        return;
+      const noAparecen = idsPedido.filter(
+        (id) =>
+          !inscriptosActuales.some(
+            (inscripto) =>
+              inscripto.jugador.id === id &&
+              inscripto.categoria_inscripcion === categoriaPedido
+          )
+      );
+      if (noAparecen.length > 0) {
+        throw new Error(
+          `El jugador no quedó en ${categoriaPedido}. El registro no se vinculó a esa categoría.`
+        );
       }
+
+      setInscriptos(inscriptosActuales);
+      setCategoriaFiltro(categoriaPedido);
+      router.refresh();
+
+      toast.success(
+        idsPedido.length === 1
+          ? "Jugador inscripto."
+          : `${idsPedido.length} jugadores inscriptos.`
+      );
+      cerrarModalInscribir();
+    } catch (error) {
+      const mensaje =
+        error instanceof Error
+          ? error.message
+          : "No se pudieron inscribir los jugadores.";
+      console.error("Error al inscribir jugadores:", mensaje);
+      toast.error(mensaje);
+    } finally {
+      setIsInscribiendo(false);
     }
-
-    setIsInscribiendo(false);
-
-    toast.success(
-      idsInscribir.length === 1
-        ? "Jugador inscripto."
-        : `${idsInscribir.length} jugadores inscriptos.`
-    );
-    cerrarModalInscribir();
-    await cargarInscriptos();
   }
 
-  async function handleQuitarInscripto(inscripto: Inscripto) {
+  async function handleQuitarInscripto(inscripto: InscriptoTorneo) {
     const confirmado = window.confirm(
-      `¿Seguro que querés quitar a ${inscripto.jugador.nombre_completo} de este torneo?`
+      `¿Seguro que querés quitar a ${inscripto.jugador.nombre_completo} de ${inscripto.categoria_inscripcion} en este torneo?`
     );
     if (!confirmado) return;
 
@@ -806,6 +736,10 @@ export function TorneoDetalleClient() {
     toast.success("Resultado guardado.");
     cerrarModalResultado();
     await cargarPartidos();
+    if (partidoActual.fase === "Clasificacion") {
+      await cargarInscriptos();
+    }
+    router.refresh();
   }
 
   // Delega el armado al motor (ranking + extremos + byes / W.O.).
@@ -814,7 +748,7 @@ export function TorneoDetalleClient() {
       id: inscripto.jugador.id,
       nombre_completo: inscripto.jugador.nombre_completo,
       whatsapp: "",
-      categoria: categoriaDeCompetencia(inscripto),
+      categoria: categoriaDeInscripcion(inscripto),
       genero: inscripto.jugador.genero,
     }));
 
@@ -825,7 +759,11 @@ export function TorneoDetalleClient() {
 
     setIsGenerandoCruces(true);
     try {
-      const resultado = await generarCrucesClasificacion(torneoId, jugadores);
+      const resultado = await generarCrucesClasificacion(
+        torneoId,
+        categoriaFiltro,
+        jugadores
+      );
 
       if (resultado.ok) {
         toast.success(
@@ -853,11 +791,23 @@ export function TorneoDetalleClient() {
       return;
     }
 
+    const reemplazar = hayCuadroEliminatorio(partidosCuadroCategoria);
+    if (
+      reemplazar &&
+      !window.confirm(
+        "¿Regenerar el cuadro eliminatorio? Se borrarán las llaves actuales y se armará de nuevo desde la clasificación."
+      )
+    ) {
+      return;
+    }
+
     setIsGenerandoCuadro(true);
     try {
       const resultado = await generarCuadroFinal(
         torneoId,
-        idsJugadoresFiltrados
+        categoriaFiltro,
+        idsJugadoresFiltrados,
+        { reemplazarExistente: reemplazar }
       );
 
       if (resultado.ok) {
@@ -865,7 +815,7 @@ export function TorneoDetalleClient() {
           ? ` desde ${resultado.primeraFase}`
           : "";
         toast.success(
-          `Cuadro final generado${ronda}: ${resultado.partidosCreados} partidos.`
+          `Cuadro generado desde clasificación${ronda}: ${resultado.partidosCreados} partidos.`
         );
         await cargarPartidos();
         router.refresh();
@@ -920,7 +870,7 @@ export function TorneoDetalleClient() {
     const fase = formData.get("fase")?.toString();
     const cancha = formData.get("cancha")?.toString() || null;
     const fechaHorario = fromDatetimeLocalValue(
-      formData.get("fecha_horario")?.toString() ?? ""
+      formData.get("fecha_programada")?.toString() ?? ""
     );
 
     if (!jugador1Id || !jugador2Id || !fase) return;
@@ -944,7 +894,7 @@ export function TorneoDetalleClient() {
         jugador_2_id: jugador2Id,
         fase,
         cancha,
-        fecha_horario: fechaHorario,
+        fecha_programada: fechaHorario,
         ...(cambiaronJugadores
           ? {
               // Si se cambia el emparejamiento, cualquier resultado cargado
@@ -1055,7 +1005,7 @@ export function TorneoDetalleClient() {
               </div>
 
               <div className="flex gap-2 overflow-x-auto pb-1">
-                {categoriasInscriptos.map((categoria) => {
+                {categoriasFiltro.map((categoria) => {
                   const activa = categoriaFiltro === categoria;
                   return (
                     <button
@@ -1101,14 +1051,14 @@ export function TorneoDetalleClient() {
 
             {/* Pestaña: Jugadores Inscriptos */}
             {pestanaMostrada === "jugadores" && (
-            <section>
+            <section key={`inscriptos-${generoFiltro}-${categoriaFiltro}`}>
               <div className="mb-4 flex items-center justify-between gap-3">
                 <h2 className="text-lg font-semibold text-foreground">
                   Jugadores inscriptos
                   <span className="ml-2 text-sm font-normal text-foreground/50">
                     ({inscriptosFiltrados.length}
                     {generoFiltro !== "Todos" || categoriaFiltro !== "Todas"
-                      ? ` de ${inscriptos.length}`
+                      ? ` de ${totalInscriptosEnCategoria}`
                       : ""}
                     )
                   </span>
@@ -1130,13 +1080,13 @@ export function TorneoDetalleClient() {
                   <p className="px-6 py-10 text-center text-sm text-foreground/50">
                     Cargando...
                   </p>
-                ) : inscriptos.length === 0 ? (
-                  <p className="px-6 py-10 text-center text-sm text-foreground/50">
-                    Todavía no hay jugadores inscriptos en este torneo.
-                  </p>
                 ) : inscriptosFiltrados.length === 0 ? (
                   <p className="px-6 py-10 text-center text-sm text-foreground/50">
-                    No hay inscriptos con esos filtros.
+                    {categoriaFiltro !== "Todas"
+                      ? `Todavía no hay jugadores inscriptos en ${categoriaFiltro} de este torneo.`
+                      : generoFiltro !== "Todos"
+                        ? `No hay jugadores inscriptos (${generoFiltro}) en este torneo.`
+                        : "Todavía no hay jugadores inscriptos en este torneo."}
                   </p>
                 ) : (
                   <div className="overflow-x-auto">
@@ -1147,7 +1097,7 @@ export function TorneoDetalleClient() {
                             Nombre
                           </th>
                           <th className="px-4 py-3 font-medium sm:px-6">
-                            Categoría
+                            Categoría del torneo
                           </th>
                           <th className="px-4 py-3 font-medium sm:px-6">
                             Género
@@ -1170,9 +1120,9 @@ export function TorneoDetalleClient() {
                             </td>
                             <td className="px-4 py-3 sm:px-6">
                               <span className="inline-block rounded-full border border-border px-2.5 py-1 text-xs font-semibold text-foreground/80">
-                                {categoriaDeCompetencia(inscripto)}
+                                {categoriaDeInscripcion(inscripto) || "—"}
                               </span>
-                              {categoriaDeCompetencia(inscripto) !==
+                              {inscripto.categoria_inscripcion !==
                               inscripto.jugador.categoria ? (
                                 <span className="ml-2 text-[11px] text-foreground/40">
                                   ficha {inscripto.jugador.categoria}
@@ -1234,6 +1184,7 @@ export function TorneoDetalleClient() {
               <FaseClasificacionTab
                 key={`${generoFiltro}-${categoriaFiltro}`}
                 torneoId={torneoId}
+                categoriaTorneo={categoriaFiltro}
                 categoriaLabel={`${categoriaFiltro}${
                   generoFiltro !== "Todos" ? ` · ${generoFiltro}` : ""
                 }`}
@@ -1243,7 +1194,7 @@ export function TorneoDetalleClient() {
                   id: inscripto.jugador.id,
                   nombre_completo: inscripto.jugador.nombre_completo,
                   whatsapp: "",
-                  categoria: categoriaDeCompetencia(inscripto),
+                  categoria: categoriaDeInscripcion(inscripto),
                   genero: inscripto.jugador.genero,
                 }))}
                 partidosClasificacion={partidosClasificacionFiltrados}
@@ -1252,6 +1203,14 @@ export function TorneoDetalleClient() {
                 onGuardados={async () => {
                   await cargarPartidos();
                   router.refresh();
+                }}
+                onCargarResultado={(partido) => {
+                  const original = partidos.find((p) => p.id === partido.id);
+                  if (original) abrirModalResultado(original);
+                }}
+                onProgramarPartido={(partido) => {
+                  const original = partidos.find((p) => p.id === partido.id);
+                  if (original) setPartidoProgramando(original);
                 }}
               />
             ))}
@@ -1269,13 +1228,14 @@ export function TorneoDetalleClient() {
 
                 {isAdmin && !isLoadingPartidos && (
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                    {!partidos.some((p) => p.fase === "Clasificacion") && (
+                    {partidosClasificacionFiltrados.length === 0 &&
+                      inscriptosFiltrados.length >= 2 && (
                       <button
                         type="button"
                         onClick={handleGenerarCruces}
-                        disabled={isGenerandoCruces || inscriptos.length < 2}
+                        disabled={isGenerandoCruces || inscriptosFiltrados.length < 2}
                         title={
-                          inscriptos.length < 2
+                          inscriptosFiltrados.length < 2
                             ? "Necesitás al menos 2 jugadores inscriptos"
                             : undefined
                         }
@@ -1288,8 +1248,7 @@ export function TorneoDetalleClient() {
                       </button>
                     )}
 
-                    {partidosClasificacionFiltrados.length > 0 &&
-                      !hayCuadroEliminatorio(partidosCuadroCategoria) && (
+                    {partidosClasificacionFiltrados.length > 0 && (
                         <button
                           type="button"
                           onClick={handleGenerarCuadroFinal}
@@ -1306,21 +1265,11 @@ export function TorneoDetalleClient() {
                           <Trophy size={16} />
                           {isGenerandoCuadro
                             ? "Generando cuadro..."
-                            : "Generar Cuadro Final"}
+                            : hayCuadroEliminatorio(partidosCuadroCategoria)
+                              ? "Regenerar Cuadro desde Clasificación"
+                              : "Generar Cuadro desde Clasificación"}
                         </button>
                       )}
-
-                    {hayCuadroEliminatorio(partidosCuadroCategoria) && (
-                      <button
-                        type="button"
-                        onClick={() => setIsModalEditarCuadroOpen(true)}
-                        disabled={partidosDeRondaActiva.length === 0}
-                        className="inline-flex items-center justify-center gap-2 rounded-lg border border-border bg-surface px-4 py-2.5 text-sm font-semibold text-foreground/80 transition hover:bg-background hover:text-foreground active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        <Pencil size={16} />
-                        Editar Cruces Manualmente
-                      </button>
-                    )}
                   </div>
                 )}
               </div>
@@ -1359,9 +1308,33 @@ export function TorneoDetalleClient() {
                   Cargando...
                 </div>
               ) : !hayCuadroEliminatorio(partidosCuadroCategoria) ? (
-                <div className="rounded-2xl border border-[#3f3f46] bg-[#1a1a1a] px-6 py-16 text-center text-sm text-white/50">
-                  Todavía no se generó el cuadro eliminatorio para esta
-                  categoría.
+                <div className="rounded-2xl border border-[#3f3f46] bg-[#1a1a1a] px-6 py-16 text-center">
+                  <p className="text-sm text-white/50">
+                    Todavía no se generó el cuadro eliminatorio para esta
+                    categoría.
+                  </p>
+                  {isAdmin &&
+                  partidosClasificacionFiltrados.length > 0 &&
+                  clasificacionCategoriaCompleta ? (
+                    <button
+                      type="button"
+                      onClick={handleGenerarCuadroFinal}
+                      disabled={isGenerandoCuadro}
+                      className="mt-6 inline-flex items-center justify-center gap-2 rounded-xl bg-accent px-6 py-3 text-sm font-semibold text-white transition hover:bg-accent-hover active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <Trophy size={18} />
+                      {isGenerandoCuadro
+                        ? "Generando cuadro..."
+                        : "Generar Cuadro desde Clasificación"}
+                    </button>
+                  ) : isAdmin &&
+                    partidosClasificacionFiltrados.length > 0 &&
+                    !clasificacionCategoriaCompleta ? (
+                    <p className="mt-4 text-xs text-white/35">
+                      Cargá todos los resultados de clasificación para habilitar
+                      la generación automática.
+                    </p>
+                  ) : null}
                 </div>
               ) : (
                 <CuadroLlaves
@@ -1393,23 +1366,6 @@ export function TorneoDetalleClient() {
           </>
         )}
       </div>
-
-      {isModalEditarCuadroOpen && rondaCuadroActiva && (
-        <ModalEditarPrimeraRonda
-          key={`${rondaCuadroActiva}-${partidosDeRondaActiva.map((partido) => partido.id).join("-")}`}
-          fase={
-            RONDA_CUADRO_LABELS[rondaCuadroActiva] ?? rondaCuadroActiva
-          }
-          partidos={partidosDeRondaActiva}
-          jugadoresElegibles={jugadoresElegiblesCuadro}
-          idsRondasPosteriores={idsRondasPosterioresCuadro}
-          onCerrar={() => setIsModalEditarCuadroOpen(false)}
-          onGuardado={async () => {
-            await cargarPartidos();
-            router.refresh();
-          }}
-        />
-      )}
 
       {/* Modal: Inscribir jugadores (múltiples) */}
       {isModalInscribirOpen && (
@@ -1463,6 +1419,11 @@ export function TorneoDetalleClient() {
                       </option>
                     ))}
                   </select>
+                  <p className="text-[11px] leading-snug text-foreground/45">
+                    Un jugador puede estar inscripto en varias categorías del
+                    mismo torneo. Solo se ocultan quienes ya están en la
+                    categoría elegida.
+                  </p>
                 </div>
 
                 <input
@@ -1821,17 +1782,17 @@ export function TorneoDetalleClient() {
 
                 <div className="space-y-1.5">
                   <label
-                    htmlFor="fecha_horario"
+                    htmlFor="fecha_programada"
                     className="block text-sm font-medium text-foreground/80"
                   >
                     Día y hora
                   </label>
                   <input
-                    id="fecha_horario"
-                    name="fecha_horario"
+                    id="fecha_programada"
+                    name="fecha_programada"
                     type="datetime-local"
                     defaultValue={toDatetimeLocalValue(
-                      partidoEditando.fecha_horario
+                      partidoEditando.fecha_programada
                     )}
                     className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-foreground outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/30 [color-scheme:dark]"
                   />

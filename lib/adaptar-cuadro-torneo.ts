@@ -4,7 +4,7 @@ export interface PartidoParaCuadro {
   estado: string;
   ganador_id: string | null;
   fase: string;
-  fecha_horario: string | null;
+  fecha_programada: string | null;
   siguiente_partido_id: string | null;
   jugador_1: { id: string; nombre_completo: string } | null;
   jugador_2: { id: string; nombre_completo: string } | null;
@@ -24,7 +24,7 @@ const ORDEN_FASE: Record<string, number> = {
   Final: 4,
 };
 
-function esFaseDeCuadro(fase: string) {
+export function esFaseDeCuadro(fase: string) {
   return (FASES_CUADRO as readonly string[]).includes(fase);
 }
 

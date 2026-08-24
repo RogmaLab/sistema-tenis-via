@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { Calendar, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { CANCHAS_TORNEO } from "@/lib/types";
 import {
@@ -12,7 +13,7 @@ import { guardarProgramacionPartido } from "@/lib/motor-torneo";
 
 interface PartidoProgramable {
   id: string;
-  fecha_horario: string | null;
+  fecha_programada: string | null;
   cancha: string | null;
   jugador_1: { nombre_completo: string } | null;
   jugador_2: { nombre_completo: string } | null;
@@ -32,21 +33,32 @@ export function ModalProgramarPartido({
   onCerrar,
   onGuardado,
 }: ModalProgramarPartidoProps) {
-  const [fecha, setFecha] = useState(toDateInputValue(partido.fecha_horario));
-  const [hora, setHora] = useState(toTimeInputValue(partido.fecha_horario));
+  const yaProgramado = Boolean(partido.fecha_programada || partido.cancha);
+  const [fecha, setFecha] = useState(
+    toDateInputValue(partido.fecha_programada)
+  );
+  const [hora, setHora] = useState(
+    toTimeInputValue(partido.fecha_programada)
+  );
   const [cancha, setCancha] = useState(partido.cancha ?? "");
   const [guardando, setGuardando] = useState(false);
+  const [errorProgramacion, setErrorProgramacion] = useState<string | null>(
+    null
+  );
 
   async function handleGuardar(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setErrorProgramacion(null);
     setGuardando(true);
     try {
       await guardarProgramacionPartido({
         partido_id: partido.id,
         cancha: cancha || null,
-        fecha_horario: fromDateAndTimeValues(fecha, hora),
+        fecha_programada: fromDateAndTimeValues(fecha, hora),
       });
-      toast.success("Programación guardada.");
+      toast.success(
+        yaProgramado ? "Programación actualizada." : "Partido programado."
+      );
       await onGuardado();
       onCerrar();
     } catch (error) {
@@ -54,6 +66,7 @@ export function ModalProgramarPartido({
         error instanceof Error
           ? error.message
           : "No se pudo guardar la programación.";
+      setErrorProgramacion(mensaje);
       toast.error(mensaje);
     } finally {
       setGuardando(false);
@@ -70,8 +83,9 @@ export function ModalProgramarPartido({
         onClick={(event) => event.stopPropagation()}
       >
         <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-foreground">
-            Programar Partido
+          <h2 className="flex items-center gap-2 text-lg font-semibold text-foreground">
+            <Calendar size={18} className="text-accent" />
+            {yaProgramado ? "Editar Programación" : "Programar Partido"}
           </h2>
           <button
             type="button"
@@ -88,6 +102,20 @@ export function ModalProgramarPartido({
         </p>
 
         <form onSubmit={handleGuardar} className="space-y-4">
+          {errorProgramacion ? (
+            <div
+              role="alert"
+              className="flex items-start gap-2 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2.5 text-sm text-red-400"
+            >
+              <AlertCircle
+                size={16}
+                className="mt-0.5 shrink-0"
+                aria-hidden
+              />
+              <p>{errorProgramacion}</p>
+            </div>
+          ) : null}
+
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <label
@@ -100,7 +128,10 @@ export function ModalProgramarPartido({
                 id="programar-fecha"
                 type="date"
                 value={fecha}
-                onChange={(event) => setFecha(event.target.value)}
+                onChange={(event) => {
+                  setFecha(event.target.value);
+                  setErrorProgramacion(null);
+                }}
                 className={inputClass}
               />
             </div>
@@ -115,7 +146,10 @@ export function ModalProgramarPartido({
                 id="programar-hora"
                 type="time"
                 value={hora}
-                onChange={(event) => setHora(event.target.value)}
+                onChange={(event) => {
+                  setHora(event.target.value);
+                  setErrorProgramacion(null);
+                }}
                 className={inputClass}
               />
             </div>
@@ -131,7 +165,10 @@ export function ModalProgramarPartido({
             <select
               id="programar-cancha"
               value={cancha}
-              onChange={(event) => setCancha(event.target.value)}
+              onChange={(event) => {
+                setCancha(event.target.value);
+                setErrorProgramacion(null);
+              }}
               className={inputClass}
             >
               <option value="">Sin asignar</option>

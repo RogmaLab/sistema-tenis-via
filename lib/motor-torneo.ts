@@ -245,7 +245,7 @@ export function asientoDesdeSlot(
   }
   const jugador = inscriptos.find((item) => item.id === slotId);
   if (!jugador) {
-    throw new Error("Hay un slot con un jugador que no está inscripto.");
+    throw new Error("Hay un asiento con alguien que no está inscripto.");
   }
   return {
     id: jugador.id,
@@ -331,7 +331,7 @@ export async function generarCrucesClasificacion(
 
   if (inscriptos.length < 2) {
     throw new Error(
-      "Se necesitan al menos 2 jugadores para armar los cruces."
+      "Se necesitan al menos 2 personas inscriptas para armar los cruces."
     );
   }
 
@@ -425,7 +425,7 @@ export async function guardarCrucesDesdeDraft(
       !cruce.jugador_2_id ||
       cruce.jugador_1_id === cruce.jugador_2_id
     ) {
-      throw new Error("Cada cruce de clasificación necesita dos jugadores distintos.");
+      throw new Error("Cada cruce de clasificación necesita dos nombres distintos.");
     }
   }
 
@@ -522,19 +522,19 @@ export async function guardarEdicionClasificacion(params: {
     const jugador_2_id = normalizarSlotClasificacion(cruce.jugador_2_id);
 
     if (jugador_1_id == null && jugador_2_id == null) {
-      throw new Error("Cada cruce necesita al menos un jugador o un BYE.");
+      throw new Error("Cada cruce necesita al menos un nombre o un BYE.");
     }
     if (
       jugador_1_id &&
       jugador_2_id &&
       jugador_1_id === jugador_2_id
     ) {
-      throw new Error("Un jugador no puede jugar contra sí mismo.");
+      throw new Error("La misma persona no puede jugar en ambos lados.");
     }
     for (const id of [jugador_1_id, jugador_2_id]) {
       if (id && !idsJugadoresCategoria.includes(id)) {
         throw new Error(
-          "Hay un jugador que no está inscripto en esta categoría."
+          "Hay alguien que no está inscripto en esta categoría."
         );
       }
     }
@@ -645,14 +645,14 @@ function validarPartidoClasificacionCompleto(partido: PartidoClasificacion) {
     const humano = ganadorHumanoClasificacionBye(partido);
     if (!humano || partido.ganador_id !== humano) {
       throw new Error(
-        "Hay un partido de clasificación W.O. sin ganador válido."
+        "Hay un partido de clasificación W.O. sin definir quién avanza."
       );
     }
     return;
   }
 
   if (!partido.jugador_1_id || !partido.jugador_2_id) {
-    throw new Error("Hay un partido de clasificación con un solo jugador.");
+    throw new Error("Hay un partido de clasificación con un solo lado definido.");
   }
 
   perdedorDePartidoClasificacion(partido);
@@ -664,7 +664,7 @@ function perdedorDePartidoClasificacion(
 ): string | null {
   const ganadorId = partido.ganador_id;
   if (!ganadorId) {
-    throw new Error("Hay un partido de clasificación sin ganador definido.");
+    throw new Error("Hay un partido de clasificación sin definir quién ganó.");
   }
 
   if (esPartidoClasificacionBye(partido)) {
@@ -1179,7 +1179,7 @@ export async function guardarEdicionPrimeraRonda(params: {
 
   for (const cruce of cruces) {
     if (cruce.jugador_1_id && cruce.jugador_1_id === cruce.jugador_2_id) {
-      throw new Error("Un jugador no puede jugar contra sí mismo.");
+      throw new Error("La misma persona no puede jugar en ambos lados.");
     }
     if (!cruce.jugador_1_id && !cruce.jugador_2_id) {
       throw new Error("No se puede guardar un cruce BYE vs BYE.");
@@ -1542,7 +1542,7 @@ export async function actualizarResultadoPartidoConPropagacion(params: {
     snapshot.jugador_1_id !== nuevoGanadorId &&
     snapshot.jugador_2_id !== nuevoGanadorId
   ) {
-    throw new Error("El ganador debe ser uno de los dos jugadores del partido.");
+    throw new Error("Quién ganó tiene que ser uno de los dos lados del partido.");
   }
 
   // 2) Mismo ganador: solo actualizamos texto/estado y listo.

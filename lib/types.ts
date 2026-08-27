@@ -181,3 +181,14 @@ export interface Partido {
   siguiente_partido_id: string | null;
   created_at: string;
 }
+
+/** Anuncio de un campeonato futuro (tabla `upcoming_tournaments`). */
+export interface TorneoFuturo {
+  id: string;
+  titulo: string;
+  descripcion: string | null;
+  fecha_inicio: string; // ISO date
+  fecha_fin: string | null;
+  categorias: string[];
+  created_at: string;
+}

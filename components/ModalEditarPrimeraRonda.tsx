@@ -78,8 +78,8 @@ function OpcionesSelect({ opciones }: { opciones: OpcionesCuadroManual }) {
   return (
     <>
       <option value={SLOT_BYE}>--- BYE (Pase Libre) ---</option>
-      {optgroup("Ganadores Qualy", opciones.ganadoresQualy)}
-      {optgroup("Perdedores Qualy (Lucky Loser)", opciones.perdedoresQualy)}
+      {optgroup("Clasificó en qualy", opciones.ganadoresQualy)}
+      {optgroup("Lucky loser (qualy)", opciones.perdedoresQualy)}
       {optgroup("Pases directos", opciones.pasesDirectos)}
       {optgroup("Otros", opciones.otros)}
     </>
@@ -197,7 +197,7 @@ export function ModalEditarPrimeraRonda({
               Editar cuadro
             </h2>
             <p className="mt-1 text-sm text-foreground/50">
-              {fase}: intercambiá jugadores (G, L o pases directos) o asigná{" "}
+              {fase}: intercambiá nombres (G, L o pases directos) o asigná{" "}
               <span className="font-medium text-foreground/70">
                 BYE (Pase Libre)
               </span>{" "}
@@ -218,7 +218,7 @@ export function ModalEditarPrimeraRonda({
           {hayError && (
             <p className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-400">
               {hayAutocruz
-                ? "Hay un partido con el mismo jugador en ambos lados."
+                ? "Hay un partido con la misma persona en ambos lados."
                 : "No puede haber un cruce BYE vs BYE."}
             </p>
           )}
@@ -245,7 +245,7 @@ export function ModalEditarPrimeraRonda({
                     className={claseSelect(
                       slotMarcadoRojo(cruce, cruce.jugador_1_id)
                     )}
-                    aria-label={`Jugador 1 del partido ${indice + 1}`}
+                    aria-label={`Lado 1 del partido ${indice + 1}`}
                   >
                     <OpcionesSelect opciones={opciones} />
                   </select>
@@ -264,7 +264,7 @@ export function ModalEditarPrimeraRonda({
                     className={claseSelect(
                       slotMarcadoRojo(cruce, cruce.jugador_2_id)
                     )}
-                    aria-label={`Jugador 2 del partido ${indice + 1}`}
+                    aria-label={`Lado 2 del partido ${indice + 1}`}
                   >
                     <OpcionesSelect opciones={opciones} />
                   </select>

@@ -9,9 +9,7 @@ const RUTAS_PUBLICAS = ["/login", "/auth/callback", "/recuperar-clave"];
 // Rutas exclusivas de creación/edición admin.
 // El CRUD actual vive en modales sobre páginas compartidas (lectura OK para
 // jugadores autenticados); RLS bloquea writes. Reservamos paths dedicados acá.
-const RUTAS_SOLO_ADMIN: string[] = [
-  // Ejemplos futuros: "/admin", "/torneos/nuevo", "/jugadores/nuevo"
-];
+const RUTAS_SOLO_ADMIN: string[] = ["/admin"];
 
 function esRutaPublica(pathname: string) {
   return RUTAS_PUBLICAS.some(

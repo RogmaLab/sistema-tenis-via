@@ -66,6 +66,48 @@ export async function fetchMiJugador(
   };
 }
 
+export async function fetchJugadorPorId(
+  supabase: SupabaseClient,
+  jugadorId: string
+): Promise<Jugador | null> {
+  const id = jugadorId.trim();
+  if (!id) return null;
+
+  const desdeVista = await supabase
+    .from("jugadores_listado")
+    .select("id, nombre_completo, whatsapp, categoria, genero, user_id")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (!desdeVista.error && desdeVista.data) {
+    return {
+      id: desdeVista.data.id,
+      nombre_completo: desdeVista.data.nombre_completo,
+      categoria: desdeVista.data.categoria,
+      genero: desdeVista.data.genero,
+      user_id: desdeVista.data.user_id,
+      whatsapp: desdeVista.data.whatsapp ?? "",
+    };
+  }
+
+  const { data, error } = await supabase
+    .from("jugadores")
+    .select("id, nombre_completo, categoria, genero, user_id")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error || !data) return null;
+
+  return {
+    id: data.id,
+    nombre_completo: data.nombre_completo,
+    categoria: data.categoria,
+    genero: data.genero,
+    user_id: data.user_id,
+    whatsapp: "",
+  };
+}
+
 export async function listarJugadoresSinVincular(
   supabase: SupabaseClient
 ): Promise<Pick<Jugador, "id" | "nombre_completo" | "categoria" | "genero">[]> {

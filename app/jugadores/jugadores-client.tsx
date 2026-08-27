@@ -7,6 +7,7 @@ import {
   useState,
   type FormEvent,
 } from "react";
+import Link from "next/link";
 import { Filter, Pencil, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { WhatsAppIcon } from "@/components/whatsapp-icon";
@@ -207,7 +208,7 @@ export function JugadoresClient() {
   async function handleEliminarJugador(id: string) {
     if (!isAdmin) return;
     const confirmado = window.confirm(
-      "¿Seguro que querés eliminar a este jugador?"
+      "¿Seguro que querés eliminar esta ficha?"
     );
     if (!confirmado) return;
 
@@ -232,10 +233,12 @@ export function JugadoresClient() {
         {/* Encabezado del panel */}
         <header className="mb-6">
           <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-            Jugadores
+            Comunidad
           </h1>
           <p className="mt-1 text-sm text-foreground/60">
-            {jugadores.length} jugadores inscriptos
+            {jugadores.length === 1
+              ? "1 ficha en el club"
+              : `${jugadores.length} fichas en el club`}
           </p>
         </header>
 
@@ -246,7 +249,7 @@ export function JugadoresClient() {
               type="search"
               value={busqueda}
               onChange={(event) => setBusqueda(event.target.value)}
-              placeholder="Buscar jugador por nombre..."
+              placeholder="Buscar por nombre..."
               className="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-foreground placeholder:text-foreground/30 outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/30 sm:w-64"
             />
 
@@ -275,7 +278,7 @@ export function JugadoresClient() {
               className="inline-flex items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-hover active:scale-[0.98] sm:w-auto"
             >
               <span className="text-lg leading-none">+</span>
-              Nuevo Jugador
+              Nueva ficha
             </button>
           )}
         </div>
@@ -380,8 +383,13 @@ export function JugadoresClient() {
                         key={jugador.id}
                         className="border-b border-border last:border-0 hover:bg-background/40"
                       >
-                        <td className="px-4 py-3 font-medium text-foreground sm:px-6">
-                          {jugador.nombre_completo}
+                        <td className="px-4 py-3 font-medium sm:px-6">
+                          <Link
+                            href={`/jugadores/${jugador.id}`}
+                            className="text-foreground transition hover:text-accent hover:underline"
+                          >
+                            {jugador.nombre_completo}
+                          </Link>
                         </td>
                         {isAdmin && (
                           <td className="px-4 py-3 sm:px-6">
@@ -435,8 +443,8 @@ export function JugadoresClient() {
               {jugadoresFiltrados.length === 0 && (
                 <p className="px-6 py-10 text-center text-sm text-foreground/50">
                   {jugadores.length === 0
-                    ? "Todavía no hay jugadores inscriptos."
-                    : "No se encontraron jugadores que coincidan con la búsqueda o los filtros aplicados."}
+                    ? "Todavía no hay fichas en el club."
+                    : "Ningún nombre coincide con la búsqueda o los filtros."}
                 </p>
               )}
             </>
@@ -456,7 +464,7 @@ export function JugadoresClient() {
           >
             <div className="mb-6 flex items-center justify-between">
               <h2 className="text-lg font-semibold text-foreground">
-                {jugadorEditando ? "Editar Jugador" : "Nuevo Jugador"}
+                {jugadorEditando ? "Editar ficha" : "Nueva ficha"}
               </h2>
               <button
                 type="button"
@@ -486,7 +494,7 @@ export function JugadoresClient() {
                   type="text"
                   required
                   defaultValue={jugadorEditando?.nombre_completo ?? ""}
-                  placeholder="Ej: Juan Pérez"
+                  placeholder="Ej: Ana López"
                   className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-foreground placeholder:text-foreground/30 outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/30"
                 />
               </div>

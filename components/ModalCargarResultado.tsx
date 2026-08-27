@@ -227,11 +227,11 @@ export function ModalCargarResultado({
                 <div className="grid grid-cols-[1fr_4.5rem_1.5rem_4.5rem] items-center gap-2 bg-background/60 px-3 py-2 text-xs font-medium text-foreground/40">
                   <span />
                   <span className="truncate text-center">
-                    {partido.jugador_1?.nombre_completo ?? "Jugador 1"}
+                    {partido.jugador_1?.nombre_completo ?? "Lado 1"}
                   </span>
                   <span />
                   <span className="truncate text-center">
-                    {partido.jugador_2?.nombre_completo ?? "Jugador 2"}
+                    {partido.jugador_2?.nombre_completo ?? "Lado 2"}
                   </span>
                 </div>
 
@@ -266,7 +266,7 @@ export function ModalCargarResultado({
                       -
                     </span>
                     <input
-                      aria-label={`Set ${index + 1}, games del jugador 2`}
+                      aria-label={`Set ${index + 1}, games del lado 2`}
                       type="number"
                       min={0}
                       inputMode="numeric"
@@ -294,7 +294,7 @@ export function ModalCargarResultado({
 
           <div className="space-y-2">
             <p className="block text-sm font-medium text-foreground/80">
-              {esWalkover ? "Ganador por W.O." : "Ganador"}
+              {esWalkover ? "Quién avanza por W.O." : "Quién ganó"}
             </p>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               {[partido.jugador_1, partido.jugador_2].map(
@@ -318,7 +318,7 @@ export function ModalCargarResultado({
             <p className="text-xs text-foreground/40">
               {esWalkover
                 ? "Elegí quién avanza. El otro no se presentó o se retiró."
-                : "Se calcula solo según los sets ganados. Tocá un jugador para corregirlo manualmente."}
+                : "Se calcula solo según los sets. Tocá un nombre para corregirlo a mano."}
             </p>
           </div>
 

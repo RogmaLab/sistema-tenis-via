@@ -505,7 +505,7 @@ export function TorneosClient() {
                   />
                   <p className="text-xs text-foreground/40">
                     No hace falta fecha de fin: el torneo se da por terminado
-                    cuando se consagra un campeón en la Final.
+                    cuando se consagra el título en la Final.
                   </p>
                 </div>
 

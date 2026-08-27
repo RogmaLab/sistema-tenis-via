@@ -126,15 +126,15 @@ export function VincularPerfilClient() {
         <header className="mb-6 flex items-start justify-between gap-3">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-accent">
-              Bienvenido
+              Hola
             </p>
             <h1 className="mt-1 text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-              Vinculá tu perfil de jugador
+              Vinculá tu perfil
             </h1>
             <p className="mt-2 text-sm text-foreground/60">
               {isAdmin
                 ? "Si también jugás en el club, asociá tu cuenta a una ficha o creá una nueva."
-                : "Buscá tu nombre en la lista del club. Si el admin ya te cargó, no hace falta crear otra ficha."}
+                : "Buscá tu nombre en la lista del club. Si ya figura, no hace falta crear otra ficha."}
             </p>
           </div>
           <LogoutButton className="shrink-0" />
@@ -157,7 +157,7 @@ export function VincularPerfilClient() {
         <div className="overflow-hidden rounded-2xl border border-border bg-surface">
           {cargandoLista ? (
             <p className="px-6 py-10 text-center text-sm text-foreground/50">
-              Cargando jugadores...
+              Cargando fichas...
             </p>
           ) : filtrados.length === 0 ? (
             <p className="px-6 py-10 text-center text-sm text-foreground/50">
@@ -188,7 +188,7 @@ export function VincularPerfilClient() {
                     }
                     className="shrink-0 rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-white transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {vinculandoId === jugador.id ? "Vinculando..." : "Este soy yo"}
+                    {vinculandoId === jugador.id ? "Vinculando..." : "Es mi perfil"}
                   </button>
                 </li>
               ))}

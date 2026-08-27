@@ -160,7 +160,7 @@ export function ModalEditarClasificacion({
 
   const opciones = (
     <>
-      <option value="">Elegí un jugador</option>
+      <option value="">Elegí un nombre</option>
       <option value={SLOT_BYE}>--- BYE (Pase Libre) ---</option>
       {inscriptosOrdenados.map((jugador) => (
         <option key={jugador.id} value={jugador.id}>
@@ -185,11 +185,11 @@ export function ModalEditarClasificacion({
               Editar cruces de clasificación
             </h2>
             <p className="mt-1 text-sm text-foreground/50">
-              {inscriptos.length} inscriptos. Usá{" "}
+              {inscriptos.length} inscripciones. Usá{" "}
               <span className="font-medium text-foreground/70">
                 BYE (Pase Libre)
               </span>{" "}
-              para números impares: el jugador real avanza por W.O. automático.
+              para números impares: quien juega avanza por W.O. automático.
             </p>
           </div>
           <button
@@ -206,10 +206,10 @@ export function ModalEditarClasificacion({
           {hayError && (
             <p className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-400">
               {haySlotsVacios
-                ? "Cada partido necesita dos asientos: jugador o BYE."
+                ? "Cada partido necesita dos asientos: un nombre o BYE."
                 : hayByeVsBye
                   ? "No puede haber un cruce BYE vs BYE."
-                  : "Hay un partido con el mismo jugador en ambos lados."}
+                  : "Hay un partido con la misma persona en ambos lados."}
             </p>
           )}
 
@@ -250,7 +250,7 @@ export function ModalEditarClasificacion({
                       className={claseSelect(
                         slotMarcadoRojo(cruce, cruce.jugador_1_id)
                       )}
-                      aria-label={`Jugador 1 del partido ${indice + 1}`}
+                      aria-label={`Lado 1 del partido ${indice + 1}`}
                     >
                       {opciones}
                     </select>
@@ -269,7 +269,7 @@ export function ModalEditarClasificacion({
                       className={claseSelect(
                         slotMarcadoRojo(cruce, cruce.jugador_2_id)
                       )}
-                      aria-label={`Jugador 2 del partido ${indice + 1}`}
+                      aria-label={`Lado 2 del partido ${indice + 1}`}
                     >
                       {opciones}
                     </select>
@@ -294,12 +294,12 @@ export function ModalEditarClasificacion({
             </p>
             {sinPartido.length === 0 ? (
               <p className="mt-1 text-sm text-foreground/50">
-                Todos los inscriptos están en al menos un cruce.
+                Todas las inscripciones están en al menos un cruce.
               </p>
             ) : (
               <p className="mt-1 text-sm text-foreground/70">
                 {sinPartido.map((jugador) => jugador.nombre_completo).join(", ")}
-                . Podés emparejarlos con otro jugador o con BYE (pase directo).
+                . Podés emparejarlos con otra persona o con BYE (pase directo).
               </p>
             )}
           </div>

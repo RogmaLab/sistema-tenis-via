@@ -15,7 +15,7 @@ export const CRITERIOS_PUNTAJE = [
   { etiqueta: "Participación / Inscripción", puntos: PUNTOS_POR_PARTICIPACION },
   { etiqueta: "Partido ganado (incluye W.O.)", puntos: PUNTOS_POR_PARTIDO_GANADO },
   { etiqueta: "Bonus finalista", puntos: PUNTOS_BONUS_FINALISTA },
-  { etiqueta: "Bonus campeón", puntos: PUNTOS_BONUS_CAMPEON },
+  { etiqueta: "Bonus por el título", puntos: PUNTOS_BONUS_CAMPEON },
 ] as const;
 
 export async function fetchRankingCircuito(

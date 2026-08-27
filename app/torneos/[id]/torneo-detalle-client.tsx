@@ -583,7 +583,7 @@ export function TorneoDetalleClient({
       pestanas.push({ id: "ranking", label: "Ranking" });
     }
     pestanas.push({ id: "horarios", label: "Horarios" });
-    pestanas.push({ id: "jugadores", label: "Jugadores Inscriptos" });
+    pestanas.push({ id: "jugadores", label: "Participantes" });
     if (formatoTorneo === "grupos_eliminatoria") {
       pestanas.push({ id: "grupos", label: "Fase de Grupos" });
     }
@@ -652,7 +652,7 @@ export function TorneoDetalleClient({
       const inscriptosActuales = await fetchInscriptosDesdeSupabase();
       if (!inscriptosActuales) {
         throw new Error(
-          "La inscripción no se pudo confirmar: falló la recarga de inscriptos."
+          "La inscripción no se pudo confirmar: falló la recarga de participantes."
         );
       }
 
@@ -666,7 +666,7 @@ export function TorneoDetalleClient({
       );
       if (noAparecen.length > 0) {
         throw new Error(
-          `El jugador no quedó en ${categoriaPedido}. El registro no se vinculó a esa categoría.`
+          `La ficha no quedó en ${categoriaPedido}. El registro no se vinculó a esa categoría.`
         );
       }
 
@@ -676,16 +676,16 @@ export function TorneoDetalleClient({
 
       toast.success(
         idsPedido.length === 1
-          ? "Jugador inscripto."
-          : `${idsPedido.length} jugadores inscriptos.`
+          ? "Inscripción lista."
+          : `${idsPedido.length} inscripciones listas.`
       );
       cerrarModalInscribir();
     } catch (error) {
       const mensaje =
         error instanceof Error
           ? error.message
-          : "No se pudieron inscribir los jugadores.";
-      console.error("Error al inscribir jugadores:", mensaje);
+          : "No se pudieron completar las inscripciones.";
+      console.error("Error al inscribir:", mensaje);
       toast.error(mensaje);
     } finally {
       setIsInscribiendo(false);
@@ -793,7 +793,7 @@ export function TorneoDetalleClient({
     }));
 
     if (jugadores.length < 2) {
-      toast.error("Seleccioná una categoría con al menos 2 inscriptos.");
+      toast.error("Seleccioná una categoría con al menos 2 personas inscriptas.");
       return;
     }
 
@@ -836,7 +836,7 @@ export function TorneoDetalleClient({
     if (
       reemplazar &&
       !window.confirm(
-        "¿Regenerar el cuadro eliminatorio? Se borrarán solo las llaves (Octavos/Cuartos/Semis/Final) de esta categoría. La clasificación y los inscriptos no se tocan."
+        "¿Regenerar el cuadro eliminatorio? Se borrarán solo las llaves (Octavos/Cuartos/Semis/Final) de esta categoría. La clasificación y las inscripciones no se tocan."
       )
     ) {
       return;
@@ -917,7 +917,7 @@ export function TorneoDetalleClient({
 
     if (!jugador1Id || !jugador2Id || !fase) return;
     if (jugador1Id === jugador2Id) {
-      window.alert("Jugador 1 y Jugador 2 no pueden ser el mismo jugador.");
+      window.alert("Los dos lados del partido no pueden ser la misma persona.");
       return;
     }
 
@@ -1111,7 +1111,7 @@ export function TorneoDetalleClient({
             <section key={`inscriptos-${generoFiltro}-${categoriaFiltro}`}>
               <div className="mb-4 flex items-center justify-between gap-3">
                 <h2 className="text-lg font-semibold text-foreground">
-                  Jugadores inscriptos
+                  Participantes
                   <span className="ml-2 text-sm font-normal text-foreground/50">
                     ({inscriptosFiltrados.length}
                     {generoFiltro !== "Todos" || categoriaFiltro !== "Todas"
@@ -1127,7 +1127,7 @@ export function TorneoDetalleClient({
                     className="inline-flex items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-hover active:scale-[0.98]"
                   >
                     <UserPlus size={16} />
-                    Inscribir jugadores
+                    Inscribir
                   </button>
                 )}
               </div>
@@ -1140,10 +1140,10 @@ export function TorneoDetalleClient({
                 ) : inscriptosFiltrados.length === 0 ? (
                   <p className="px-6 py-10 text-center text-sm text-foreground/50">
                     {categoriaFiltro !== "Todas"
-                      ? `Todavía no hay jugadores inscriptos en ${categoriaFiltro} de este torneo.`
+                      ? `Todavía no hay personas inscriptas en ${categoriaFiltro} de este torneo.`
                       : generoFiltro !== "Todos"
-                        ? `No hay jugadores inscriptos (${generoFiltro}) en este torneo.`
-                        : "Todavía no hay jugadores inscriptos en este torneo."}
+                        ? `No hay personas inscriptas (${generoFiltro}) en este torneo.`
+                        : "Todavía no hay personas inscriptas en este torneo."}
                   </p>
                 ) : (
                   <div className="overflow-x-auto">
@@ -1301,7 +1301,7 @@ export function TorneoDetalleClient({
                         disabled={isGenerandoCruces || inscriptosFiltrados.length < 2}
                         title={
                           inscriptosFiltrados.length < 2
-                            ? "Necesitás al menos 2 jugadores inscriptos"
+                            ? "Necesitás al menos 2 personas inscriptas"
                             : undefined
                         }
                         className="inline-flex items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-hover active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
@@ -1476,7 +1476,7 @@ export function TorneoDetalleClient({
           >
             <div className="flex shrink-0 items-center justify-between px-6 pt-6 sm:px-8 sm:pt-8">
               <h2 className="text-lg font-semibold text-foreground">
-                Inscribir jugadores
+                Inscribir participantes
               </h2>
               <button
                 type="button"
@@ -1517,8 +1517,8 @@ export function TorneoDetalleClient({
                     ))}
                   </select>
                   <p className="text-[11px] leading-snug text-foreground/45">
-                    Un jugador puede estar inscripto en varias categorías del
-                    mismo torneo. Solo se ocultan quienes ya están en la
+                    Una misma persona puede estar inscripta en varias categorías
+                    del mismo torneo. Solo se ocultan quienes ya están en la
                     categoría elegida.
                   </p>
                 </div>
@@ -1534,19 +1534,21 @@ export function TorneoDetalleClient({
 
                 {isLoadingJugadores ? (
                   <p className="py-8 text-center text-sm text-foreground/50">
-                    Cargando jugadores del club...
+                    Cargando fichas del club...
                   </p>
                 ) : jugadoresDisponibles.length === 0 ? (
                   <p className="py-8 text-center text-sm text-foreground/50">
-                    No hay más jugadores para inscribir en esta categoría.
+                    No hay más fichas para inscribir en esta categoría.
                   </p>
                 ) : (
                   <>
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-xs text-foreground/50">
                         {idsInscribir.length === 0
-                          ? "Elegí uno o más jugadores"
-                          : `${idsInscribir.length} seleccionado${idsInscribir.length === 1 ? "" : "s"}`}
+                          ? "Elegí uno o más nombres"
+                          : idsInscribir.length === 1
+                            ? "1 nombre elegido"
+                            : `${idsInscribir.length} nombres elegidos`}
                       </p>
                       {jugadoresDisponiblesFiltrados.length > 0 && (
                         <button
@@ -1751,7 +1753,7 @@ export function TorneoDetalleClient({
                   htmlFor="jugador_1_id"
                   className="block text-sm font-medium text-foreground/80"
                 >
-                  Jugador 1
+                  Lado 1
                 </label>
                 <select
                   id="jugador_1_id"
@@ -1773,7 +1775,7 @@ export function TorneoDetalleClient({
                   htmlFor="jugador_2_id"
                   className="block text-sm font-medium text-foreground/80"
                 >
-                  Jugador 2
+                  Lado 2
                 </label>
                 <select
                   id="jugador_2_id"
@@ -1791,10 +1793,9 @@ export function TorneoDetalleClient({
               </div>
 
               <p className="text-xs text-foreground/40">
-                Si cambiás alguno de los jugadores, el resultado y el
-                ganador cargados anteriormente se borran y el partido vuelve
-                a quedar &quot;Pendiente&quot;. Cambiar solo la fase no
-                afecta el resultado ya cargado.
+                Si cambiás alguno de los nombres, el resultado y quién ganó
+                se borran y el partido vuelve a quedar &quot;Pendiente&quot;.
+                Cambiar solo la fase no afecta el resultado ya cargado.
               </p>
 
               <div className="flex gap-3 pt-2">

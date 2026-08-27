@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Award, Home, Trophy, UserRound, Users, type LucideIcon } from "lucide-react";
+import { Award, CalendarClock, Home, Trophy, UserRound, Users, type LucideIcon } from "lucide-react";
 
 interface NavLink {
   href: string;
@@ -13,7 +13,8 @@ interface NavLink {
 const NAV_LINKS: NavLink[] = [
   { href: "/", label: "Inicio", icon: Home },
   { href: "/torneos", label: "Torneos", icon: Trophy },
-  { href: "/jugadores", label: "Jugadores", icon: Users },
+  { href: "/lo-que-viene", label: "Lo que viene", icon: CalendarClock },
+  { href: "/jugadores", label: "Comunidad", icon: Users },
   { href: "/ranking", label: "Ranking", icon: Award },
   { href: "/perfil", label: "Perfil", icon: UserRound },
 ];
@@ -46,7 +47,7 @@ export function BottomNav() {
             <Link
               key={href}
               href={href}
-              className={`flex h-16 min-h-11 flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-medium transition ${
+              className={`flex h-16 min-h-11 flex-1 flex-col items-center justify-center gap-0.5 px-0.5 text-center text-[10px] font-medium leading-tight transition ${
                 isActive ? "text-accent" : "text-foreground/55"
               }`}
             >

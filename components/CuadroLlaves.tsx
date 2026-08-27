@@ -72,7 +72,7 @@ function TarjetaCampeon({ partidoFinal }: { partidoFinal: PartidoLlave }) {
           className="text-[10px] font-semibold uppercase tracking-[0.16em]"
           style={{ color: TEMA_LLAVES.subtitulo }}
         >
-          Campeón
+          Campeón/a
         </p>
       </div>
       <p

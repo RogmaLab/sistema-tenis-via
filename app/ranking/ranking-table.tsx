@@ -111,7 +111,7 @@ export function RankingTable({ ranking }: RankingTableProps) {
               <Award size={22} className="text-accent" />
             </div>
             <p className="text-sm text-foreground/60">
-              No hay jugadores que coincidan con los filtros seleccionados.
+              No hay nombres que coincidan con los filtros seleccionados.
             </p>
           </div>
         ) : (
@@ -120,7 +120,7 @@ export function RankingTable({ ranking }: RankingTableProps) {
               <thead>
                 <tr className="border-b border-border text-xs uppercase tracking-wide text-foreground/50">
                   <th className="w-14 px-3 py-3 font-medium sm:px-4">#</th>
-                  <th className="px-4 py-3 font-medium sm:px-6">Jugador</th>
+                  <th className="px-4 py-3 font-medium sm:px-6">Nombre</th>
                   <th className="px-4 py-3 font-medium sm:px-6">Categoría</th>
                   <th className="px-4 py-3 font-medium sm:px-6">Puntos</th>
                   <th

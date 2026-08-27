@@ -33,7 +33,7 @@ export function HorariosTorneo({ partidos, isLoading = false }: HorariosTorneoPr
           Todavía no hay partidos programados
         </p>
         <p className="mt-2 max-w-sm text-sm text-foreground/40">
-          Cuando el organizador asigne día y hora, van a aparecer acá.
+          Cuando el club asigne día y hora, van a aparecer acá.
         </p>
       </section>
     );

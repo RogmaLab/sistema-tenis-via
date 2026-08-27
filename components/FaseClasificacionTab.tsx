@@ -114,7 +114,7 @@ export function FaseClasificacionTab({
   function handleSortear() {
     if (!isAdmin) return;
     if (inscriptos.length < 2) {
-      toast.error("Se necesitan al menos 2 inscriptos en esta categoría.");
+      toast.error("Se necesitan al menos 2 personas inscriptas en esta categoría.");
       return;
     }
     try {
@@ -170,7 +170,7 @@ export function FaseClasificacionTab({
       return;
     }
     if (hayAutocruz) {
-      toast.error("Un jugador no puede jugar contra sí mismo.");
+      toast.error("La misma persona no puede jugar en ambos lados.");
       return;
     }
     if (
@@ -182,7 +182,7 @@ export function FaseClasificacionTab({
           esSlotBye(cruce.jugador_2_id)
       )
     ) {
-      toast.error("Cada cruce de clasificación necesita dos jugadores.");
+      toast.error("Cada cruce de clasificación necesita dos nombres.");
       return;
     }
 
@@ -369,13 +369,13 @@ export function FaseClasificacionTab({
           Todavía no hay cruces sorteados
         </p>
         <p className="mt-2 max-w-sm text-sm text-foreground/40">
-          Con {inscriptos.length} inscriptos se arman{" "}
+          Con {inscriptos.length} inscripciones se arman{" "}
           {Math.floor(inscriptos.length / 2)} cruces. Si queda uno suelto, se
           acomoda con Editar Cruces Manualmente.
         </p>
         {inscriptos.length < 2 ? (
           <p className="mt-4 text-sm text-foreground/40">
-            Se necesitan al menos 2 inscriptos en esta categoría.
+            Se necesitan al menos 2 personas inscriptas en esta categoría.
           </p>
         ) : isAdmin ? (
           <div className="mt-6 flex flex-col items-center gap-3 sm:flex-row">
@@ -418,7 +418,7 @@ export function FaseClasificacionTab({
 
   const opciones = (
     <>
-      <option value="">Elegí un jugador</option>
+      <option value="">Elegí un nombre</option>
       {inscriptosOrdenados.map((jugador) => (
         <option key={jugador.id} value={jugador.id}>
           {jugador.nombre_completo}
@@ -434,7 +434,7 @@ export function FaseClasificacionTab({
           Borrador de cruces
         </h2>
         <p className="mt-1 text-sm text-foreground/50">
-          {categoriaLabel}. Armá los partidos que quieras: un jugador puede
+          {categoriaLabel}. Armá los partidos que quieras: una misma persona puede
           repetir. El sorteo es solo un atajo.
         </p>
       </header>
@@ -442,7 +442,7 @@ export function FaseClasificacionTab({
       {(hayAutocruz || byeVsBye) && (
         <p className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-400">
           {hayAutocruz
-            ? "Hay un partido con el mismo jugador en ambos lados."
+            ? "Hay un partido con la misma persona en ambos lados."
             : "Hay un cruce BYE vs BYE. Cambiá uno de los asientos."}
         </p>
       )}
@@ -483,7 +483,7 @@ export function FaseClasificacionTab({
                   slotMarcadoRojo(cruce.jugador_1_id, cruce),
                   !isAdmin
                 )}
-                aria-label={`Jugador 1 del cruce ${indice + 1}`}
+                aria-label={`Lado 1 del cruce ${indice + 1}`}
               >
                 {opciones}
               </select>
@@ -504,7 +504,7 @@ export function FaseClasificacionTab({
                   slotMarcadoRojo(cruce.jugador_2_id, cruce),
                   !isAdmin
                 )}
-                aria-label={`Jugador 2 del cruce ${indice + 1}`}
+                aria-label={`Lado 2 del cruce ${indice + 1}`}
               >
                 {opciones}
               </select>

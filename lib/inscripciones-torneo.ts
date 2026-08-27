@@ -157,7 +157,7 @@ export async function inscribirJugadoresEnTorneo(params: {
     throw new Error("Falta la categoría del torneo en la que se inscribe.");
   }
   if (params.jugadorIds.length === 0) {
-    throw new Error("No hay jugadores para inscribir.");
+    throw new Error("No hay nadie para inscribir.");
   }
 
   const supabase = createClient();
@@ -191,7 +191,7 @@ export async function inscribirJugadoresEnTorneo(params: {
     if (insert.error) {
       if (esConflictoDeFila(insert.error)) {
         throw new Error(
-          `Uno o más jugadores ya están inscriptos en ${categoriaTorneo} de este torneo.`
+          `Hay alguien que ya está inscripto en ${categoriaTorneo} de este torneo.`
         );
       }
       if (faltaRestriccionPorCategoria(insert.error)) {
@@ -229,7 +229,7 @@ export async function inscribirJugadoresEnTorneo(params: {
   const noVinculados = params.jugadorIds.filter((id) => !idsConfirmados.has(id));
   if (noVinculados.length > 0) {
     throw new Error(
-      `El jugador no quedó inscripto en ${categoriaTorneo} de este torneo.`
+      `La inscripción no quedó registrada en ${categoriaTorneo} de este torneo.`
     );
   }
 

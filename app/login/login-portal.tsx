@@ -128,7 +128,7 @@ export function LoginPortal() {
     }
 
     setAviso(
-      "Te mandamos un email para confirmar la cuenta. Cuando lo abras, vas a poder vincular tu perfil de jugador."
+      "Te mandamos un email para confirmar la cuenta. Cuando lo abras, vas a poder vincular tu perfil."
     );
   }
 
@@ -170,10 +170,10 @@ export function LoginPortal() {
 
   const subtitulo =
     modo === "registro"
-      ? "Registrate para ver torneos, ranking y tu perfil de jugador."
+      ? "Registrate para ver torneos, ranking y tu perfil."
       : modo === "recuperar"
         ? "Escribí tu email y te mandamos el link de recuperación."
-        : "Jugadores y organizadores, el mismo acceso.";
+        : "Toda la comunidad, el mismo acceso.";
 
   return (
     <div className="w-full max-w-sm rounded-2xl border border-border bg-surface p-6 shadow-2xl shadow-black/40 sm:p-8">

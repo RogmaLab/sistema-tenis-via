@@ -6,10 +6,14 @@ import { toast } from "sonner";
 import { CANCHAS_TORNEO } from "@/lib/types";
 import {
   fromDateAndTimeValues,
+  HORAS_PROGRAMACION,
+  MINUTOS_PROGRAMACION,
+  snapHoraAMediaHora,
   toDateInputValue,
   toTimeInputValue,
 } from "@/lib/datetime";
 import { guardarProgramacionPartido } from "@/lib/motor-torneo";
+import { useAuth } from "@/components/auth-provider";
 
 interface PartidoProgramable {
   id: string;
@@ -33,12 +37,17 @@ export function ModalProgramarPartido({
   onCerrar,
   onGuardado,
 }: ModalProgramarPartidoProps) {
+  const { isAdmin } = useAuth();
   const yaProgramado = Boolean(partido.fecha_programada || partido.cancha);
+  const horaInicial = partido.fecha_programada
+    ? snapHoraAMediaHora(toTimeInputValue(partido.fecha_programada))
+    : "";
   const [fecha, setFecha] = useState(
     toDateInputValue(partido.fecha_programada)
   );
-  const [hora, setHora] = useState(
-    toTimeInputValue(partido.fecha_programada)
+  const [hora, setHora] = useState(horaInicial ? horaInicial.slice(0, 2) : "");
+  const [minuto, setMinuto] = useState(
+    horaInicial.slice(3, 5) === "30" ? "30" : "00"
   );
   const [cancha, setCancha] = useState(partido.cancha ?? "");
   const [guardando, setGuardando] = useState(false);
@@ -48,13 +57,17 @@ export function ModalProgramarPartido({
 
   async function handleGuardar(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!isAdmin) return;
     setErrorProgramacion(null);
     setGuardando(true);
     try {
       await guardarProgramacionPartido({
         partido_id: partido.id,
         cancha: cancha || null,
-        fecha_programada: fromDateAndTimeValues(fecha, hora),
+        fecha_programada: fromDateAndTimeValues(
+          fecha,
+          hora ? `${hora}:${minuto}` : ""
+        ),
       });
       toast.success(
         yaProgramado ? "Programación actualizada." : "Partido programado."
@@ -136,22 +149,48 @@ export function ModalProgramarPartido({
               />
             </div>
             <div className="space-y-1.5">
-              <label
-                htmlFor="programar-hora"
-                className="block text-xs font-medium text-foreground/50"
-              >
+              <p className="block text-xs font-medium text-foreground/50">
                 Hora
-              </label>
-              <input
-                id="programar-hora"
-                type="time"
-                value={hora}
-                onChange={(event) => {
-                  setHora(event.target.value);
-                  setErrorProgramacion(null);
-                }}
-                className={inputClass}
-              />
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="sr-only" htmlFor="programar-hora">
+                  Hora
+                </label>
+                <select
+                  id="programar-hora"
+                  value={hora}
+                  onChange={(event) => {
+                    setHora(event.target.value);
+                    setErrorProgramacion(null);
+                  }}
+                  className={inputClass}
+                >
+                  <option value="">--</option>
+                  {HORAS_PROGRAMACION.map((opcion) => (
+                    <option key={opcion} value={opcion}>
+                      {opcion}
+                    </option>
+                  ))}
+                </select>
+                <label className="sr-only" htmlFor="programar-minuto">
+                  Minutos
+                </label>
+                <select
+                  id="programar-minuto"
+                  value={minuto}
+                  onChange={(event) => {
+                    setMinuto(event.target.value);
+                    setErrorProgramacion(null);
+                  }}
+                  className={inputClass}
+                >
+                  {MINUTOS_PROGRAMACION.map((opcion) => (
+                    <option key={opcion} value={opcion}>
+                      {opcion}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
 

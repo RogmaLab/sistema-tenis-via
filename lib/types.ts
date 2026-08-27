@@ -101,6 +101,8 @@ export interface Jugador {
   whatsapp: string;
   categoria: string;
   genero: string;
+  /** Cuenta de auth vinculada. null = ficha todavía no reclamada. */
+  user_id?: string | null;
 }
 
 // Jugador con los puntos de ranking ya calculados a partir del historial
@@ -109,6 +111,7 @@ export interface JugadorRanking extends Jugador {
   participaciones: number;
   partidosGanados: number;
   puntos: number;
+  diferenciaGames: number;
 }
 
 // Tabla intermedia torneo ↔ jugador. Unicidad: (torneo_id, jugador_id, categoria).
@@ -123,6 +126,8 @@ export interface TorneoJugador {
 }
 
 export type EstadoPartido = "Pendiente" | "Finalizado";
+
+export type TipoFasePartido = "clasificacion" | "eliminatoria" | "grupos";
 
 export type FasePartido =
   | "Clasificacion"
@@ -163,6 +168,12 @@ export interface Partido {
   resultado: string | null;
   estado: EstadoPartido;
   fase: string;
+  /** Aislamiento: clasificacion | eliminatoria | grupos. */
+  tipo_fase?: TipoFasePartido | null;
+  /** Ronda del cuadro. NULL en clasificación. */
+  ronda?: string | null;
+  /** Orden 1-based en la llave. */
+  numero_slot?: number | null;
   /** Cuadro del torneo (ej. 4ta). Segmenta clasificación y cuadro por categoría. */
   categoria: string | null;
   cancha: string | null;

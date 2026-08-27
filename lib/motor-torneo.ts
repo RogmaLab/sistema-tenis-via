@@ -1,9 +1,9 @@
 import { createClient } from "@/lib/supabase/client";
 import type { Jugador } from "@/lib/types";
 import {
-  calcularBonusFinales,
-  contarVictoriasRanking,
-  puntajeDesdeConteos,
+  calcularPuntajesRanking,
+  compararPuntajesRanking,
+  type InscripcionParaRanking,
   type PartidoParaRanking,
   type PuntajeRanking,
 } from "@/lib/motor-ranking";
@@ -18,13 +18,14 @@ async function obtenerPuntajesRanking(
   jugadorIds: string[]
 ): Promise<Map<string, PuntajeRanking>> {
   const supabase = createClient();
-  const ids = new Set(jugadorIds);
 
   const [inscripcionesResult, partidosFinalizadosResult] = await Promise.all([
-    supabase.from("torneo_jugadores").select("jugador_id"),
+    supabase.from("torneo_jugadores").select("jugador_id, torneo_id"),
     supabase
       .from("partidos")
-      .select("ganador_id, fase, jugador_1_id, jugador_2_id, resultado")
+      .select(
+        "torneo_id, ganador_id, fase, jugador_1_id, jugador_2_id, resultado"
+      )
       .eq("estado", "Finalizado"),
   ]);
 
@@ -39,28 +40,19 @@ async function obtenerPuntajesRanking(
     );
   }
 
-  const participaciones = new Map<string, number>();
-  for (const fila of inscripcionesResult.data ?? []) {
-    const id = fila.jugador_id as string | null;
-    if (!id || !ids.has(id)) continue;
-    participaciones.set(id, (participaciones.get(id) ?? 0) + 1);
-  }
-
-  const partidos = (partidosFinalizadosResult.data ??
-    []) as PartidoParaRanking[];
-  const victorias = contarVictoriasRanking(partidos);
-  const bonus = calcularBonusFinales(partidos);
+  const puntajesCompletos = calcularPuntajesRanking(
+    (inscripcionesResult.data as InscripcionParaRanking[] | null) ?? [],
+    (partidosFinalizadosResult.data as PartidoParaRanking[] | null) ?? []
+  );
 
   const puntajes = new Map<string, PuntajeRanking>();
   for (const id of jugadorIds) {
-    puntajes.set(
-      id,
-      puntajeDesdeConteos({
-        participaciones: participaciones.get(id) ?? 0,
-        partidosGanados: victorias.get(id) ?? 0,
-        bonus: bonus.get(id) ?? 0,
-      })
-    );
+    const puntaje = puntajesCompletos.get(id);
+    puntajes.set(id, {
+      puntos: puntaje?.puntos ?? 0,
+      partidosGanados: puntaje?.partidosGanados ?? 0,
+      diferenciaGames: puntaje?.diferenciaGames ?? 0,
+    });
   }
 
   return puntajes;
@@ -302,6 +294,26 @@ function filaPartidoDesdePareja(
   };
 }
 
+const TIPO_FASE_CLASIFICACION = "clasificacion" as const;
+const TIPO_FASE_ELIMINATORIA = "eliminatoria" as const;
+
+function metadatosClasificacion(numero_slot: number) {
+  return {
+    tipo_fase: TIPO_FASE_CLASIFICACION,
+    ronda: null as string | null,
+    numero_slot,
+  };
+}
+
+function metadatosEliminatoria(ronda: string, numero_slot: number) {
+  return {
+    tipo_fase: TIPO_FASE_ELIMINATORIA,
+    ronda,
+    numero_slot,
+    fase: ronda,
+  };
+}
+
 /**
  * Empareja a todos los inscriptos: floor(N/2) partidos.
  * El impar restante queda sin cruce para acomodarlo a mano.
@@ -329,31 +341,40 @@ export async function generarCrucesClasificacion(
     inscriptos.map((jugador) => jugador.id)
   );
 
-  const ordenados = [...inscriptos].sort((a, b) => {
-    const rankingA = puntajes.get(a.id) ?? { puntos: 0, partidosGanados: 0 };
-    const rankingB = puntajes.get(b.id) ?? { puntos: 0, partidosGanados: 0 };
-
-    if (rankingB.puntos !== rankingA.puntos) {
-      return rankingB.puntos - rankingA.puntos;
-    }
-    if (rankingB.partidosGanados !== rankingA.partidosGanados) {
-      return rankingB.partidosGanados - rankingA.partidosGanados;
-    }
-    return a.nombre_completo.localeCompare(b.nombre_completo, "es");
-  });
+  const ordenados = [...inscriptos].sort((a, b) =>
+    compararPuntajesRanking(
+      {
+        ...(puntajes.get(a.id) ?? {
+          puntos: 0,
+          partidosGanados: 0,
+          diferenciaGames: 0,
+        }),
+        nombre_completo: a.nombre_completo,
+      },
+      {
+        ...(puntajes.get(b.id) ?? {
+          puntos: 0,
+          partidosGanados: 0,
+          diferenciaGames: 0,
+        }),
+        nombre_completo: b.nombre_completo,
+      }
+    )
+  );
 
   const parejas = emparejarAsientosPorExtremos(
     ordenados.map(jugadorAAsiento)
   );
-  const nuevosPartidos = parejas.map(({ mejor, peor }) =>
-    filaPartidoDesdePareja(
+  const nuevosPartidos = parejas.map(({ mejor, peor }, indice) => ({
+    ...filaPartidoDesdePareja(
       torneo_id,
       categoriaTorneo,
       "Clasificacion",
       mejor,
       peor
-    )
-  );
+    ),
+    ...metadatosClasificacion(indice + 1),
+  }));
 
   if (nuevosPartidos.length === 0) {
     throw new Error("No se pudieron armar partidos de clasificación.");
@@ -411,15 +432,16 @@ export async function guardarCrucesDesdeDraft(
   const supabase = createClient();
   await borrarClasificacionDeCategoria(supabase, torneo_id, categoriaTorneo);
 
-  const nuevosPartidos = cruces.map((cruce) =>
-    filaPartidoDesdePareja(
+  const nuevosPartidos = cruces.map((cruce, indice) => ({
+    ...filaPartidoDesdePareja(
       torneo_id,
       categoriaTorneo,
       "Clasificacion",
       asientoDesdeSlot(cruce.jugador_1_id, inscriptos),
       asientoDesdeSlot(cruce.jugador_2_id, inscriptos)
-    )
-  );
+    ),
+    ...metadatosClasificacion(indice + 1),
+  }));
 
   const { error } = await supabase.from("partidos").insert(nuevosPartidos);
 
@@ -531,7 +553,7 @@ export async function guardarEdicionClasificacion(params: {
     }
   }
 
-  for (const cruce of cruces) {
+  for (const [indice, cruce] of cruces.entries()) {
     const jugador_1_id = normalizarSlotClasificacion(cruce.jugador_1_id);
     const jugador_2_id = normalizarSlotClasificacion(cruce.jugador_2_id);
     const esBye = jugador_1_id == null || jugador_2_id == null;
@@ -564,7 +586,11 @@ export async function guardarEdicionClasificacion(params: {
 
       const { error } = await supabase
         .from("partidos")
-        .update(payload)
+        .update({
+          ...payload,
+          tipo_fase: TIPO_FASE_CLASIFICACION,
+          ronda: null,
+        })
         .eq("id", cruce.id)
         .eq("fase", "Clasificacion");
       if (error) {
@@ -575,6 +601,7 @@ export async function guardarEdicionClasificacion(params: {
         torneo_id: torneoId,
         categoria: categoriaTorneo,
         fase: "Clasificacion",
+        ...metadatosClasificacion(indice + 1),
         ...payloadBase,
       });
       if (error) {
@@ -589,6 +616,7 @@ export async function guardarEdicionClasificacion(params: {
 interface PartidoClasificacion {
   id?: string;
   created_at?: string;
+  numero_slot?: number | null;
   jugador_1_id: string | null;
   jugador_2_id: string | null;
   ganador_id: string | null;
@@ -670,19 +698,14 @@ function asientoByeSlot(indice = 0): AsientoCuadro {
   };
 }
 
-function agruparPartidosEnParesConsecutivos<T>(items: T[]): [T, T | undefined][] {
-  const pares: [T, T | undefined][] = [];
-  for (let i = 0; i < items.length; i += 2) {
-    pares.push([items[i], items[i + 1]]);
-  }
-  return pares;
-}
-
 /** Conserva el orden de llegada (Cruce 1, 2, 3…) cuando comparten created_at. */
 function ordenarPartidosClasificacion(partidos: PartidoClasificacion[]) {
   return partidos
     .map((partido, indiceOriginal) => ({ partido, indiceOriginal }))
     .sort((a, b) => {
+      const sa = a.partido.numero_slot ?? Number.MAX_SAFE_INTEGER;
+      const sb = b.partido.numero_slot ?? Number.MAX_SAFE_INTEGER;
+      if (sa !== sb) return sa - sb;
       const ta = a.partido.created_at ? Date.parse(a.partido.created_at) : 0;
       const tb = b.partido.created_at ? Date.parse(b.partido.created_at) : 0;
       if (ta !== tb) return ta - tb;
@@ -691,95 +714,29 @@ function ordenarPartidosClasificacion(partidos: PartidoClasificacion[]) {
     .map(({ partido }) => partido);
 }
 
-type FilaPartidoInsert = ReturnType<typeof filaPartidoDesdePareja>;
+const FASES_CUADRO_ELIMINATORIO = [
+  "Octavos de Final",
+  "Cuartos de Final",
+  "Semifinal",
+  "Final",
+] as const;
 
-/** Índice 1-based del cruce de clasificación (Cruce 1 … Cruce 6). */
-type IndiceCruceClasificacion = 1 | 2 | 3 | 4 | 5 | 6;
+const MAX_SLOTS_PRIMERA_RONDA = 16;
 
-type FuenteAsientoOctavo =
-  | { tipo: "bye_estructural" }
-  | { tipo: "ganador"; cruce: IndiceCruceClasificacion }
-  | { tipo: "perdedor"; cruce: IndiceCruceClasificacion };
-
-type EntradaTemplateOctavos6 =
-  | {
-      tipo: "cruce";
-      slot1: Exclude<FuenteAsientoOctavo, { tipo: "bye_estructural" }>;
-      slot2: Exclude<FuenteAsientoOctavo, { tipo: "bye_estructural" }>;
-    }
-  | { tipo: "pase_libre_estructural" };
-
-interface ResultadoCruceClasificacion {
-  ganador: string;
-  perdedor: string | null;
-}
+const RONDAS_POR_PARTIDOS: Record<number, readonly string[]> = {
+  8: ["Octavos de Final", "Cuartos de Final", "Semifinal", "Final"],
+  4: ["Cuartos de Final", "Semifinal", "Final"],
+  2: ["Semifinal", "Final"],
+  1: ["Final"],
+};
 
 /**
- * Template fijo RogmaLab: 6 cruces de clasificación → 8 octavos (16 slots).
- * Replica la planilla Excel: cruces Formato Mundial en posiciones tácticas y
- * 2 pases libres estructurales (jugador real vs BYE), nunca casilleros vacíos.
- *
- * Par C1+C2 → Oct1 (G1 vs L2), Oct3 (G2 vs L1)
- * Par C3+C4 → Oct4 (G3 vs L4), Oct5 (G4 vs L3)
- * Par C5+C6 → Oct7 (G5 vs L6), Oct8 (G6 vs L5)
- * Pases libres → Oct2 y Oct6 (mitades superior e inferior del cuadro)
+ * Jugadores que avanzan al cuadro: todos los humanos de la Qualy
+ * (ganador y perdedor de cada cruce) más inscriptos con pase directo.
  */
-export const TEMPLATE_OCTAVOS_6_CLASIFICACION: readonly EntradaTemplateOctavos6[] =
-  [
-    {
-      tipo: "cruce",
-      slot1: { tipo: "ganador", cruce: 1 },
-      slot2: { tipo: "perdedor", cruce: 2 },
-    },
-    { tipo: "pase_libre_estructural" },
-    {
-      tipo: "cruce",
-      slot1: { tipo: "ganador", cruce: 2 },
-      slot2: { tipo: "perdedor", cruce: 1 },
-    },
-    {
-      tipo: "cruce",
-      slot1: { tipo: "ganador", cruce: 3 },
-      slot2: { tipo: "perdedor", cruce: 4 },
-    },
-    {
-      tipo: "cruce",
-      slot1: { tipo: "ganador", cruce: 4 },
-      slot2: { tipo: "perdedor", cruce: 3 },
-    },
-    { tipo: "pase_libre_estructural" },
-    {
-      tipo: "cruce",
-      slot1: { tipo: "ganador", cruce: 5 },
-      slot2: { tipo: "perdedor", cruce: 6 },
-    },
-    {
-      tipo: "cruce",
-      slot1: { tipo: "ganador", cruce: 6 },
-      slot2: { tipo: "perdedor", cruce: 5 },
-    },
-  ] as const;
-
-const CANTIDAD_PASES_LIBRES_ESTRUCTURALES_TEMPLATE_6 = 2;
-
-function resultadosCrucesClasificacion(
-  partidosClasificacion: PartidoClasificacion[]
-): ResultadoCruceClasificacion[] {
-  return partidosClasificacion.map((partido) => ({
-    ganador: partido.ganador_id!,
-    perdedor: perdedorDePartidoClasificacion(partido),
-  }));
-}
-
-/**
- * Jugadores candidatos a pase libre en octavos (sin casilleros huérfanos):
- * 1) Inscriptos sin cruce Qualy · 2) Ganadores de Qualy vs BYE ·
- * 3) Ganadores de cruces 1 y 4 (mitades del cuadro, si faltan cupos).
- */
-function construirColaPasesLibreOctavo6(
+function jugadoresQueAvanzanDeClasificacion(
   partidosClasificacion: PartidoClasificacion[],
-  pasesDirectos: string[],
-  cruces: ResultadoCruceClasificacion[]
+  pasesDirectos: string[]
 ): string[] {
   const vistos = new Set<string>();
   const cola: string[] = [];
@@ -790,369 +747,100 @@ function construirColaPasesLibreOctavo6(
     vistos.add(jugadorId);
   };
 
+  for (const partido of ordenarPartidosClasificacion(partidosClasificacion)) {
+    agregar(partido.ganador_id);
+    agregar(perdedorDePartidoClasificacion(partido));
+  }
   for (const jugadorId of pasesDirectos) {
     agregar(jugadorId);
   }
 
-  for (const partido of partidosClasificacion) {
-    if (esPartidoClasificacionBye(partido)) {
-      agregar(ganadorHumanoClasificacionBye(partido));
-    }
-  }
-
   return cola;
 }
 
-/** Cola ampliada para rellenar cuadros genéricos (no template 6). */
-function construirColaPasesLibreCuadro(
-  partidosClasificacion: PartidoClasificacion[],
-  pasesDirectos: string[],
-  cruces: ResultadoCruceClasificacion[]
-): string[] {
-  const cola = construirColaPasesLibreOctavo6(
-    partidosClasificacion,
-    pasesDirectos,
-    cruces
-  );
-  const vistos = new Set(cola);
-
-  const agregar = (jugadorId: string | null | undefined) => {
-    if (!jugadorId || vistos.has(jugadorId)) return;
-    cola.push(jugadorId);
-    vistos.add(jugadorId);
-  };
-
-  for (const cruce of cruces) {
-    agregar(cruce.ganador);
-    agregar(cruce.perdedor);
-  }
-
-  return cola;
-}
-
-function resolverAsientoOctavo(
-  fuente: Exclude<FuenteAsientoOctavo, { tipo: "bye_estructural" }>,
-  cruces: ResultadoCruceClasificacion[],
-  contadorBye: { valor: number }
-): AsientoCuadro {
-  const cruce = cruces[fuente.cruce - 1];
-  if (!cruce) {
-    throw new Error(
-      `El template de 6 clasificaciones espera el Cruce ${fuente.cruce}.`
-    );
-  }
-
-  if (fuente.tipo === "ganador") {
-    return asientoJugadorId(cruce.ganador);
-  }
-
-  if (cruce.perdedor) {
-    return asientoJugadorId(cruce.perdedor);
-  }
-
-  return asientoByeSlot(contadorBye.valor++);
-}
-
-function construirOctavoPaseLibreEstructural(
-  colaPasesLibre: string[],
-  cursorCola: { indice: number },
-  torneo_id: string,
-  categoria: string,
-  fase: string,
-  contadorBye: { valor: number }
-): FilaPartidoInsert {
-  const jugadorId = colaPasesLibre[cursorCola.indice];
-  if (!jugadorId) {
-    throw new Error(
-      "No hay jugadores disponibles para los pases libres estructurales de octavos. Revisá inscriptos y cruces de clasificación."
-    );
-  }
-  cursorCola.indice += 1;
-
-  return filaPartidoDesdePareja(
-    torneo_id,
-    categoria,
-    fase,
-    asientoJugadorId(jugadorId),
-    asientoByeSlot(contadorBye.valor++)
-  );
-}
-
-function construirOctavoDesdeTemplate(
-  entrada: EntradaTemplateOctavos6,
-  cruces: ResultadoCruceClasificacion[],
-  colaPasesLibre: string[],
-  cursorCola: { indice: number },
-  torneo_id: string,
-  categoria: string,
-  fase: string,
-  contadorBye: { valor: number }
-): FilaPartidoInsert {
-  if (entrada.tipo === "pase_libre_estructural") {
-    return construirOctavoPaseLibreEstructural(
-      colaPasesLibre,
-      cursorCola,
-      torneo_id,
-      categoria,
-      fase,
-      contadorBye
-    );
-  }
-
-  const asiento1 = resolverAsientoOctavo(
-    entrada.slot1,
-    cruces,
-    contadorBye
-  );
-  const asiento2 = resolverAsientoOctavo(
-    entrada.slot2,
-    cruces,
-    contadorBye
-  );
-
-  return filaPartidoDesdePareja(
-    torneo_id,
-    categoria,
-    fase,
-    asiento1,
-    asiento2
-  );
-}
-
-function validarPartidoOctavoConOrigen(partido: FilaPartidoInsert) {
-  const humano1 = partido.jugador_1_id;
-  const humano2 = partido.jugador_2_id;
-
-  if (!humano1 && !humano2) {
-    throw new Error(
-      "Hay un octavo de final sin jugadores reales (casillero huérfano)."
-    );
-  }
-
-  if ((humano1 && !humano2) || (!humano1 && humano2)) {
-    if (partido.estado !== "Finalizado" || !partido.ganador_id) {
-      throw new Error(
-        "Un pase libre de octavos debe resolverse como W.O. con ganador definido."
-      );
-    }
-  }
-}
-
-/** Posicionamiento fijo: exactamente 6 cruces Qualy → 8 octavos. */
-function construirPrimeraRondaTemplate6Clasificacion(
-  partidosClasificacion: PartidoClasificacion[],
-  pasesDirectos: string[],
-  torneo_id: string,
-  categoria: string,
-  fase: string
-): FilaPartidoInsert[] {
-  if (partidosClasificacion.length !== 6) {
-    throw new Error(
-      "El template de 6 clasificaciones requiere exactamente 6 partidos."
-    );
-  }
-
-  const cruces = resultadosCrucesClasificacion(partidosClasificacion);
-  const colaPasesLibre = construirColaPasesLibreOctavo6(
-    partidosClasificacion,
-    pasesDirectos,
-    cruces
-  );
-
-  if (colaPasesLibre.length < CANTIDAD_PASES_LIBRES_ESTRUCTURALES_TEMPLATE_6) {
-    throw new Error(
-      `Se necesitan ${CANTIDAD_PASES_LIBRES_ESTRUCTURALES_TEMPLATE_6} jugadores con pase directo (fuera de la Qualy) o ganadores de cruces Qualy vs BYE para completar los octavos; hay ${colaPasesLibre.length} disponibles.`
-    );
-  }
-
-  const contadorBye = { valor: 0 };
-  const cursorCola = { indice: 0 };
-
-  const octavos = TEMPLATE_OCTAVOS_6_CLASIFICACION.map((entrada) =>
-    construirOctavoDesdeTemplate(
-      entrada,
-      cruces,
-      colaPasesLibre,
-      cursorCola,
-      torneo_id,
-      categoria,
-      fase,
-      contadorBye
-    )
-  );
-
-  for (const partido of octavos) {
-    validarPartidoOctavoConOrigen(partido);
-  }
-
-  return octavos;
-}
-
-/**
- * Formato Mundial: agrupa partidos de clasificación en pares adyacentes
- * (P1+P2, P3+P4, …) y cruza ganadores/perdedores dentro de cada par:
- * A = Ganador(P_i) vs Perdedor(P_{i+1}), B = Ganador(P_{i+1}) vs Perdedor(P_i).
- *
- * Con exactamente 6 cruces Qualy aplica TEMPLATE_OCTAVOS_6_CLASIFICACION.
- */
-export function construirPrimeraRondaFormatoMundial(
-  partidosClasificacion: PartidoClasificacion[],
-  torneo_id: string,
-  categoria: string,
-  fase: string,
-  pasesDirectos: string[] = []
-): FilaPartidoInsert[] {
-  const categoriaTorneo = categoria.trim();
-  const ordenados = ordenarPartidosClasificacion(partidosClasificacion);
-
-  if (ordenados.length === 6) {
-    return construirPrimeraRondaTemplate6Clasificacion(
-      ordenados,
-      pasesDirectos,
-      torneo_id,
-      categoriaTorneo,
-      fase
-    );
-  }
-
-  const paresConsecutivos = agruparPartidosEnParesConsecutivos(ordenados);
-  const primeraRonda: FilaPartidoInsert[] = [];
-  let byeIndice = 0;
-
-  for (const [p1, p2] of paresConsecutivos) {
-    if (p2) {
-      const w1 = p1.ganador_id!;
-      const l1 = perdedorDePartidoClasificacion(p1);
-      const w2 = p2.ganador_id!;
-      const l2 = perdedorDePartidoClasificacion(p2);
-
-      primeraRonda.push(
-        filaPartidoDesdePareja(
-          torneo_id,
-          categoriaTorneo,
-          fase,
-          asientoJugadorId(w1),
-          l2 ? asientoJugadorId(l2) : asientoByeSlot(byeIndice++)
-        )
-      );
-      primeraRonda.push(
-        filaPartidoDesdePareja(
-          torneo_id,
-          categoriaTorneo,
-          fase,
-          asientoJugadorId(w2),
-          l1 ? asientoJugadorId(l1) : asientoByeSlot(byeIndice++)
-        )
-      );
-      continue;
-    }
-
-    const ganador = p1.ganador_id!;
-    const perdedor = perdedorDePartidoClasificacion(p1);
-    primeraRonda.push(
-      filaPartidoDesdePareja(
-        torneo_id,
-        categoriaTorneo,
-        fase,
-        asientoJugadorId(ganador),
-        asientoByeSlot(byeIndice++)
-      )
-    );
-    if (perdedor) {
-      primeraRonda.push(
-        filaPartidoDesdePareja(
-          torneo_id,
-          categoriaTorneo,
-          fase,
-          asientoJugadorId(perdedor),
-          asientoByeSlot(byeIndice++)
-        )
-      );
-    }
-  }
-
-  return primeraRonda;
-}
-
-/**
- * Completa el cuadro a potencia de 2 con jugador real vs BYE (nunca casilleros vacíos).
- */
-function completarPrimeraRondaCuadro(
-  partidos: FilaPartidoInsert[],
-  torneo_id: string,
-  categoria: string,
-  faseTemporal: string,
-  colaPasesLibre: string[],
-  contadorBye: { valor: number }
-): FilaPartidoInsert[] {
-  const resultado = [...partidos];
-  const objetivo = potenciaDeDosSuperior(Math.max(1, resultado.length));
-
-  if (objetivo > 8) {
-    throw new Error(
-      `Hay ${resultado.length} partido(s) en la primera ronda; el cuadro admite hasta 8 (Octavos). Reducí cruces o inscriptos.`
-    );
-  }
-
-  let indiceCola = 0;
-  while (resultado.length < objetivo) {
-    const jugadorId = colaPasesLibre[indiceCola];
-    if (!jugadorId) {
-      throw new Error(
-        "No hay jugadores disponibles para completar los pases libres del cuadro eliminatorio."
-      );
-    }
-    indiceCola += 1;
-
-    const partido = filaPartidoDesdePareja(
-      torneo_id,
-      categoria,
-      faseTemporal,
-      asientoJugadorId(jugadorId),
-      asientoByeSlot(contadorBye.valor++)
-    );
-    validarPartidoOctavoConOrigen(partido);
-    resultado.push(partido);
-  }
-
-  return resultado;
-}
-
-const FASES_CUADRO_ELIMINATORIO = [
-  "Octavos de Final",
-  "Cuartos de Final",
-  "Semifinal",
-  "Final",
-] as const;
-
-/** Cantidad de partidos de la 1ª ronda → árbol hasta la Final. */
-const RONDAS_POR_CANTIDAD: Record<number, readonly string[]> = {
-  8: ["Octavos de Final", "Cuartos de Final", "Semifinal", "Final"],
-  4: ["Cuartos de Final", "Semifinal", "Final"],
-  2: ["Semifinal", "Final"],
-  1: ["Final"],
-};
-
-function rondasEliminatorias(cantidadPrimeraRonda: number) {
-  if (cantidadPrimeraRonda < 1) {
-    throw new Error(
-      "No hay partidos para armar la primera ronda del cuadro eliminatorio."
-    );
-  }
-
-  if (!esPotenciaDeDos(cantidadPrimeraRonda)) {
-    throw new Error(
-      `La primera ronda del cuadro debe tener una cantidad potencia de 2 (1, 2, 4 u 8). Hay ${cantidadPrimeraRonda}.`
-    );
-  }
-
-  const rondas = RONDAS_POR_CANTIDAD[cantidadPrimeraRonda];
+function rondasDelCuadro(cantidadPrimeraRonda: number) {
+  const rondas = RONDAS_POR_PARTIDOS[cantidadPrimeraRonda];
   if (!rondas) {
     throw new Error(
-      `El cuadro admite hasta 8 partidos en Octavos de Final. Hay ${cantidadPrimeraRonda}.`
+      `La primera ronda debe tener 1, 2, 4 u 8 partidos. Hay ${cantidadPrimeraRonda}.`
     );
   }
   return rondas;
+}
+
+/**
+ * Hard reset: borra TODOS los partidos del cuadro eliminatorio de la
+ * categoría. No toca Clasificacion ni inscriptos.
+ */
+export async function purgarCuadroEliminatorioDeCategoria(
+  torneo_id: string,
+  categoria: string
+): Promise<void> {
+  const supabase = createClient();
+  const categoriaTorneo = categoria.trim();
+  if (!categoriaTorneo) {
+    throw new Error("Falta la categoría para purgar el cuadro.");
+  }
+
+  const filtro = {
+    torneo_id,
+    categoria: categoriaTorneo,
+  };
+
+  const { error: errorUnlink } = await supabase
+    .from("partidos")
+    .update({ siguiente_partido_id: null })
+    .eq("torneo_id", filtro.torneo_id)
+    .eq("categoria", filtro.categoria)
+    .eq("tipo_fase", TIPO_FASE_ELIMINATORIA);
+
+  if (errorUnlink) {
+    throw new Error(
+      `No se pudieron desvincular las llaves del cuadro: ${errorUnlink.message}`
+    );
+  }
+
+  const { error: errorUnlinkLegacy } = await supabase
+    .from("partidos")
+    .update({ siguiente_partido_id: null })
+    .eq("torneo_id", filtro.torneo_id)
+    .eq("categoria", filtro.categoria)
+    .is("tipo_fase", null)
+    .in("fase", [...FASES_CUADRO_ELIMINATORIO]);
+
+  if (errorUnlinkLegacy) {
+    throw new Error(
+      `No se pudieron desvincular llaves heredadas del cuadro: ${errorUnlinkLegacy.message}`
+    );
+  }
+
+  const { error: errorBorrar } = await supabase
+    .from("partidos")
+    .delete()
+    .eq("torneo_id", filtro.torneo_id)
+    .eq("categoria", filtro.categoria)
+    .eq("tipo_fase", TIPO_FASE_ELIMINATORIA);
+
+  if (errorBorrar) {
+    throw new Error(
+      `No se pudo borrar el cuadro eliminatorio: ${errorBorrar.message}`
+    );
+  }
+
+  const { error: errorBorrarLegacy } = await supabase
+    .from("partidos")
+    .delete()
+    .eq("torneo_id", filtro.torneo_id)
+    .eq("categoria", filtro.categoria)
+    .is("tipo_fase", null)
+    .in("fase", [...FASES_CUADRO_ELIMINATORIO])
+    .neq("fase", "Clasificacion");
+
+  if (errorBorrarLegacy) {
+    throw new Error(
+      `No se pudo borrar el cuadro heredado: ${errorBorrarLegacy.message}`
+    );
+  }
 }
 
 async function borrarClasificacionDeCategoria(
@@ -1164,8 +852,8 @@ async function borrarClasificacionDeCategoria(
     .from("partidos")
     .delete()
     .eq("torneo_id", torneo_id)
-    .eq("fase", "Clasificacion")
-    .eq("categoria", categoria);
+    .eq("categoria", categoria)
+    .eq("fase", "Clasificacion");
 
   if (errorBorrar) {
     throw new Error(
@@ -1191,74 +879,96 @@ async function rollbackPartidosCreados(
   }
 }
 
-async function borrarCuadroEliminatorioDeCategoria(
-  supabase: ReturnType<typeof createClient>,
+function armarPartidosPrimeraRonda(
+  jugadorIds: string[],
   torneo_id: string,
-  categoria: string
+  categoria: string,
+  fase: string
 ) {
-  const { data, error } = await supabase
-    .from("partidos")
-    .select("id, fase, siguiente_partido_id")
-    .eq("torneo_id", torneo_id)
-    .eq("categoria", categoria)
-    .in("fase", [...FASES_CUADRO_ELIMINATORIO]);
-
-  if (error) {
+  const n = jugadorIds.length;
+  if (n < 2) {
     throw new Error(
-      `No se pudo leer el cuadro eliminatorio: ${error.message}`
+      "Se necesitan al menos 2 jugadores para armar el cuadro eliminatorio."
     );
   }
 
-  const ids = (data ?? []).map((partido) => partido.id as string);
-  if (ids.length === 0) return;
-
-  const idsSet = new Set(ids);
-  const idsOrdenados = [...ids].sort((a, b) => {
-    const partidoA = (data ?? []).find((fila) => fila.id === a);
-    const partidoB = (data ?? []).find((fila) => fila.id === b);
-    const aApuntaFuera = idsSet.has(partidoA?.siguiente_partido_id as string)
-      ? 1
-      : 0;
-    const bApuntaFuera = idsSet.has(partidoB?.siguiente_partido_id as string)
-      ? 1
-      : 0;
-    return bApuntaFuera - aApuntaFuera;
-  });
-
-  for (const id of idsOrdenados) {
-    const { error: errorBorrar } = await supabase
-      .from("partidos")
-      .delete()
-      .eq("id", id);
-    if (errorBorrar) {
-      throw new Error(
-        `No se pudo borrar el cuadro eliminatorio: ${errorBorrar.message}`
-      );
-    }
+  const slots = potenciaDeDosSuperior(n);
+  if (slots > MAX_SLOTS_PRIMERA_RONDA) {
+    throw new Error(
+      `Hay ${n} jugadores para el cuadro; el máximo es ${MAX_SLOTS_PRIMERA_RONDA} (8 octavos).`
+    );
   }
+
+  const cantidadPartidos = slots / 2;
+  const partidos: Array<
+    ReturnType<typeof filaPartidoDesdePareja> & {
+      tipo_fase: typeof TIPO_FASE_ELIMINATORIA;
+      ronda: string;
+      numero_slot: number;
+    }
+  > = [];
+  let i = 0;
+  let byeIndice = 0;
+  let slot = 1;
+
+  const crucesReales = n - cantidadPartidos;
+  for (let m = 0; m < crucesReales; m += 1) {
+    partidos.push({
+      ...filaPartidoDesdePareja(
+        torneo_id,
+        categoria,
+        fase,
+        asientoJugadorId(jugadorIds[i]),
+        asientoJugadorId(jugadorIds[i + 1])
+      ),
+      ...metadatosEliminatoria(fase, slot),
+    });
+    i += 2;
+    slot += 1;
+  }
+
+  while (i < n) {
+    partidos.push({
+      ...filaPartidoDesdePareja(
+        torneo_id,
+        categoria,
+        fase,
+        asientoJugadorId(jugadorIds[i]),
+        asientoByeSlot(byeIndice++)
+      ),
+      ...metadatosEliminatoria(fase, slot),
+    });
+    i += 1;
+    slot += 1;
+  }
+
+  if (partidos.length !== cantidadPartidos) {
+    throw new Error(
+      `Se esperaban ${cantidadPartidos} partidos de primera ronda y se armaron ${partidos.length}.`
+    );
+  }
+
+  return partidos;
 }
 
 /**
- * Arma el cuadro eliminatorio (Formato Mundial) a partir de la clasificación:
- * ganadores y perdedores se cruzan entre pares consecutivos de partidos Qualy.
- * Con exactamente 6 cruces Qualy aplica TEMPLATE_OCTAVOS_6_CLASIFICACION.
+ * Purga el cuadro de la categoría y lo regenera desde la clasificación.
+ * Nunca borra partidos de fase Clasificacion ni inscriptos.
  */
 export async function generarCuadroFinal(
   torneo_id: string,
   categoria: string,
-  jugadorIdsCategoria: string[],
-  opciones?: { reemplazarExistente?: boolean }
+  jugadorIdsCategoria: string[]
 ): Promise<ResultadoGeneracionCruces> {
   const supabase = createClient();
   const idsCreados: string[] = [];
   const categoriaTorneo = categoria.trim();
-  const idsCategoria = new Set(jugadorIdsCategoria);
 
   if (!categoriaTorneo) {
     throw new Error("Falta la categoría del torneo para armar el cuadro.");
   }
 
-  if (idsCategoria.size === 0) {
+  if (jugadorIdsCategoria.length === 0) {
     throw new Error(
       "Seleccioná una categoría con inscriptos para armar el cuadro final."
     );
@@ -1267,11 +977,12 @@ export async function generarCuadroFinal(
   const { data, error } = await supabase
     .from("partidos")
     .select(
-      "id, created_at, jugador_1_id, jugador_2_id, ganador_id, estado, categoria"
+      "id, created_at, numero_slot, jugador_1_id, jugador_2_id, ganador_id, estado, categoria"
     )
     .eq("torneo_id", torneo_id)
     .eq("fase", "Clasificacion")
     .eq("categoria", categoriaTorneo)
+    .order("numero_slot", { ascending: true })
     .order("created_at", { ascending: true });
 
   if (error) {
@@ -1299,105 +1010,35 @@ export async function generarCuadroFinal(
     );
   }
 
-  const idsEnCruces = new Set<string>();
   for (const partido of partidosClasificacion) {
-    if (partido.jugador_1_id) idsEnCruces.add(partido.jugador_1_id);
-    if (partido.jugador_2_id) idsEnCruces.add(partido.jugador_2_id);
     validarPartidoClasificacionCompleto(partido);
   }
 
+  const idsEnQualy = new Set<string>();
+  for (const partido of partidosClasificacion) {
+    if (partido.jugador_1_id) idsEnQualy.add(partido.jugador_1_id);
+    if (partido.jugador_2_id) idsEnQualy.add(partido.jugador_2_id);
+  }
   const pasesDirectos = jugadorIdsCategoria.filter(
-    (id) => !idsEnCruces.has(id)
+    (id) => !idsEnQualy.has(id)
   );
 
-  const { data: cuadroExistente, error: errorCuadro } = await supabase
-    .from("partidos")
-    .select("id")
-    .eq("torneo_id", torneo_id)
-    .eq("categoria", categoriaTorneo)
-    .in("fase", [...FASES_CUADRO_ELIMINATORIO])
-    .limit(1);
-
-  if (errorCuadro) {
-    throw new Error(
-      `No se pudo verificar el cuadro existente: ${errorCuadro.message}`
-    );
-  }
-
-  const yaHayCuadroDeCategoria = (cuadroExistente ?? []).length > 0;
-  if (yaHayCuadroDeCategoria) {
-    if (opciones?.reemplazarExistente) {
-      await borrarCuadroEliminatorioDeCategoria(
-        supabase,
-        torneo_id,
-        categoriaTorneo
-      );
-    } else {
-      throw new Error(
-        "Ya existe un cuadro eliminatorio para esta categoría. Eliminalo primero si querés regenerarlo."
-      );
-    }
-  }
-
-  let byeIndice = 0;
-  let primeraRonda = construirPrimeraRondaFormatoMundial(
+  const jugadores = jugadoresQueAvanzanDeClasificacion(
     partidosClasificacion,
-    torneo_id,
-    categoriaTorneo,
-    "Clasificacion",
     pasesDirectos
   );
 
-  const usaTemplateSeisClasificacion = partidosClasificacion.length === 6;
+  await purgarCuadroEliminatorioDeCategoria(torneo_id, categoriaTorneo);
 
-  if (!usaTemplateSeisClasificacion) {
-    const crucesGenericos = resultadosCrucesClasificacion(
-      partidosClasificacion
-    );
-    const colaPasesLibre = construirColaPasesLibreCuadro(
-      partidosClasificacion,
-      pasesDirectos,
-      crucesGenericos
-    );
-    let indiceCola = 0;
-
-    while (
-      !esPotenciaDeDos(primeraRonda.length) &&
-      indiceCola < colaPasesLibre.length
-    ) {
-      const jugadorId = colaPasesLibre[indiceCola];
-      indiceCola += 1;
-      const partido = filaPartidoDesdePareja(
-        torneo_id,
-        categoriaTorneo,
-        "Clasificacion",
-        asientoJugadorId(jugadorId),
-        asientoByeSlot(byeIndice++)
-      );
-      validarPartidoOctavoConOrigen(partido);
-      primeraRonda.push(partido);
-    }
-
-    primeraRonda = completarPrimeraRondaCuadro(
-      primeraRonda,
-      torneo_id,
-      categoriaTorneo,
-      "Clasificacion",
-      colaPasesLibre.slice(indiceCola),
-      { valor: byeIndice }
-    );
-  } else if (primeraRonda.length !== 8) {
-    throw new Error(
-      "El template de 6 clasificaciones debe producir 8 octavos. Revisá los cruces Qualy."
-    );
-  }
-
-  const rondas = rondasEliminatorias(primeraRonda.length);
-  const faseCalculada = rondas[0];
-  for (const partido of primeraRonda) {
-    partido.fase = faseCalculada;
-    partido.categoria = categoriaTorneo;
-  }
+  const cantidadPartidos = potenciaDeDosSuperior(jugadores.length) / 2;
+  const rondas = rondasDelCuadro(cantidadPartidos);
+  const fasePrimera = rondas[0];
+  const primeraRonda = armarPartidosPrimeraRonda(
+    jugadores,
+    torneo_id,
+    categoriaTorneo,
+    fasePrimera
+  );
 
   try {
     const idsRondaSiguiente = await crearRondasPosteriores(
@@ -1408,7 +1049,7 @@ export async function generarCuadroFinal(
       idsCreados
     );
 
-    const partidosPrimeraRonda = primeraRonda.map((partido, indice) => ({
+    const filasPrimera = primeraRonda.map((partido, indice) => ({
       ...partido,
       siguiente_partido_id:
         idsRondaSiguiente.length === 0
@@ -1418,16 +1059,16 @@ export async function generarCuadroFinal(
 
     const { data: primeraData, error: errorPrimera } = await supabase
       .from("partidos")
-      .insert(partidosPrimeraRonda)
+      .insert(filasPrimera)
       .select("id, ganador_id, siguiente_partido_id, estado");
 
     if (
       errorPrimera ||
       !primeraData ||
-      primeraData.length !== partidosPrimeraRonda.length
+      primeraData.length !== filasPrimera.length
     ) {
       throw new Error(
-        `No se pudieron crear los partidos de ${faseCalculada}: ${errorPrimera?.message ?? "cantidad inválida"}`
+        `No se pudieron crear los partidos de ${fasePrimera}: ${errorPrimera?.message ?? "cantidad inválida"}`
       );
     }
     idsCreados.push(...primeraData.map((fila) => fila.id as string));
@@ -1443,12 +1084,75 @@ export async function generarCuadroFinal(
     return {
       ok: true,
       partidosCreados: idsCreados.length,
-      primeraFase: faseCalculada,
+      primeraFase: fasePrimera,
     };
   } catch (error) {
     await rollbackPartidosCreados(supabase, idsCreados);
     throw error;
   }
+}
+
+export interface OpcionSlotCuadro {
+  id: string;
+  label: string;
+}
+
+export interface OpcionesCuadroManual {
+  ganadoresQualy: OpcionSlotCuadro[];
+  perdedoresQualy: OpcionSlotCuadro[];
+  pasesDirectos: OpcionSlotCuadro[];
+  otros: OpcionSlotCuadro[];
+}
+
+/** Opciones etiquetadas G/L/directos para el override manual del cuadro. */
+export function construirOpcionesCuadroManual(
+  partidosClasificacion: PartidoClasificacion[],
+  idsInscriptosCategoria: string[],
+  nombrePorId: Map<string, string>
+): OpcionesCuadroManual {
+  const ordenados = ordenarPartidosClasificacion(partidosClasificacion);
+  const idsEnQualy = new Set<string>();
+  const idsEtiquetados = new Set<string>();
+  const ganadoresQualy: OpcionSlotCuadro[] = [];
+  const perdedoresQualy: OpcionSlotCuadro[] = [];
+
+  for (const [indice, partido] of ordenados.entries()) {
+    if (partido.jugador_1_id) idsEnQualy.add(partido.jugador_1_id);
+    if (partido.jugador_2_id) idsEnQualy.add(partido.jugador_2_id);
+
+    if (partido.ganador_id) {
+      idsEtiquetados.add(partido.ganador_id);
+      ganadoresQualy.push({
+        id: partido.ganador_id,
+        label: `G${indice + 1} · ${nombrePorId.get(partido.ganador_id) ?? "Jugador"}`,
+      });
+
+      const perdedor = perdedorDePartidoClasificacion(partido);
+      if (perdedor) {
+        idsEtiquetados.add(perdedor);
+        perdedoresQualy.push({
+          id: perdedor,
+          label: `L${indice + 1} · ${nombrePorId.get(perdedor) ?? "Jugador"}`,
+        });
+      }
+    }
+  }
+
+  const pasesDirectos = idsInscriptosCategoria
+    .filter((id) => !idsEnQualy.has(id))
+    .map((id) => {
+      idsEtiquetados.add(id);
+      return {
+        id,
+        label: nombrePorId.get(id) ?? "Jugador",
+      };
+    });
+
+  const otros = [...nombrePorId.entries()]
+    .filter(([id]) => !idsEtiquetados.has(id))
+    .map(([id, nombre]) => ({ id, label: nombre }));
+
+  return { ganadoresQualy, perdedoresQualy, pasesDirectos, otros };
 }
 
 export interface CrucePrimeraRondaEditado {
@@ -1571,8 +1275,8 @@ async function crearRondasPosteriores(
           categoria,
           jugador_1_id: null,
           jugador_2_id: null,
-          fase,
           estado: "Pendiente",
+          ...metadatosEliminatoria(fase, indice + 1),
           siguiente_partido_id:
             i === 0 ? null : idsRondaActual[Math.floor(indice / 2)],
         })

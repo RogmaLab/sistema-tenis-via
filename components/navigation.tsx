@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Award, Home, LogOut, Trophy, Users } from "lucide-react";
+import { Award, Home, LogOut, Trophy, UserRound, Users } from "lucide-react";
 import type { ComponentType } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { BottomNav } from "@/components/BottomNav";
@@ -19,6 +19,7 @@ const NAV_LINKS: NavLink[] = [
   { href: "/torneos", label: "Torneos", icon: Trophy },
   { href: "/jugadores", label: "Jugadores", icon: Users },
   { href: "/ranking", label: "Ranking", icon: Award },
+  { href: "/perfil", label: "Mi Perfil", icon: UserRound },
 ];
 
 function esRutaActiva(pathname: string, href: string) {
@@ -32,7 +33,14 @@ export function Navigation() {
 
   // El proxy protege todas las rutas salvo /login: no tiene sentido mostrar
   // la navegación (ni exponer "Cerrar sesión") ahí.
-  if (pathname === "/login") return null;
+  // El proxy protege todas las rutas salvo login y el callback de auth.
+  if (
+    pathname === "/login" ||
+    pathname === "/vincular-perfil" ||
+    pathname === "/recuperar-clave"
+  ) {
+    return null;
+  }
 
   async function handleLogout() {
     const supabase = createClient();

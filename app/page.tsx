@@ -3,20 +3,25 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { Trophy, UserPlus, Users } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
+import { esAdmin } from "@/lib/auth/es-admin";
 import { AdminOnly } from "@/components/AdminOnly";
 import { LogoutButton } from "@/components/LogoutButton";
 
 export default async function Home() {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const admin = user ? await esAdmin(supabase, user.id) : false;
 
   // Torneos vigentes: todos los que todavía no se dieron por terminados.
   // Un torneo pasa a "finalizado" solo cuando se corona campeón (resultado
   // de la Final). No usamos fecha_fin porque ya no se pide al crear.
   const [jugadoresResult, torneosActivosResult] = await Promise.all([
-    supabase.from("jugadores").select("*", { count: "exact", head: true }),
+    supabase.from("jugadores").select("id", { count: "exact", head: true }),
     supabase
       .from("torneos")
-      .select("*", { count: "exact", head: true })
+      .select("id", { count: "exact", head: true })
       .neq("estado", "finalizado"),
   ]);
 
@@ -37,7 +42,7 @@ export default async function Home() {
   const torneosActivos = torneosActivosResult.count ?? 0;
 
   return (
-    <main className="min-h-screen bg-background px-4 py-8 sm:px-6 lg:px-10">
+    <main className="bg-background px-4 py-8 sm:px-6 lg:px-10">
       <div className="mx-auto max-w-5xl">
         {/* Saludo de bienvenida */}
         <header className="mb-8 flex items-start justify-between gap-3">
@@ -46,7 +51,9 @@ export default async function Home() {
               Panel de Control - Tenis La Vía
             </h1>
             <p className="mt-1 text-sm text-foreground/60">
-              Bienvenido de nuevo, administrador.
+              {admin
+                ? "Bienvenido de nuevo, administrador."
+                : "Bienvenido de nuevo."}
             </p>
           </div>
           {/* En mobile el BottomNav no tiene "Salir"; queda acá al alcance del pulgar */}

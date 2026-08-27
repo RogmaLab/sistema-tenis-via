@@ -4,6 +4,9 @@ export interface PartidoParaCuadro {
   estado: string;
   ganador_id: string | null;
   fase: string;
+  tipo_fase?: string | null;
+  ronda?: string | null;
+  numero_slot?: number | null;
   fecha_programada: string | null;
   siguiente_partido_id: string | null;
   jugador_1: { id: string; nombre_completo: string } | null;
@@ -17,7 +20,7 @@ const FASES_CUADRO = [
   "Final",
 ] as const;
 
-const ORDEN_FASE: Record<string, number> = {
+const ORDEN_RONDA: Record<string, number> = {
   "Octavos de Final": 1,
   "Cuartos de Final": 2,
   Semifinal: 3,
@@ -28,27 +31,103 @@ export function esFaseDeCuadro(fase: string) {
   return (FASES_CUADRO as readonly string[]).includes(fase);
 }
 
+/** Espejo temporal: `fase` sigue existiendo, pero tipo_fase/ronda son la fuente. */
+export function metadatosDesdeFaseEspejo(fase: string) {
+  if (fase === "Clasificacion") {
+    return {
+      tipo_fase: "clasificacion" as const,
+      ronda: null as string | null,
+    };
+  }
+  if (fase === "Fase de Grupos") {
+    return {
+      tipo_fase: "grupos" as const,
+      ronda: null as string | null,
+    };
+  }
+  if (esFaseDeCuadro(fase)) {
+    return {
+      tipo_fase: "eliminatoria" as const,
+      ronda: fase,
+    };
+  }
+  return {};
+}
+
+export function esPartidoEliminatorio(partido: {
+  tipo_fase?: string | null;
+  fase: string;
+}) {
+  if (partido.tipo_fase === "eliminatoria") return true;
+  if (
+    partido.tipo_fase === "clasificacion" ||
+    partido.tipo_fase === "grupos"
+  ) {
+    return false;
+  }
+  return esFaseDeCuadro(partido.fase);
+}
+
+export function esPartidoClasificacion(partido: {
+  tipo_fase?: string | null;
+  fase: string;
+}) {
+  if (partido.tipo_fase === "clasificacion") return true;
+  if (
+    partido.tipo_fase === "eliminatoria" ||
+    partido.tipo_fase === "grupos"
+  ) {
+    return false;
+  }
+  return partido.fase === "Clasificacion";
+}
+
+/** Ronda persistida; si falta, espejo temporal en `fase`. */
+export function rondaDelPartido(partido: {
+  ronda?: string | null;
+  fase: string;
+}) {
+  const ronda = partido.ronda?.trim();
+  return ronda ? ronda : partido.fase;
+}
+
+export function ordenarPorNumeroSlot<T extends { numero_slot?: number | null }>(
+  partidos: T[]
+): T[] {
+  return [...partidos].sort((a, b) => {
+    const sa = a.numero_slot ?? Number.MAX_SAFE_INTEGER;
+    const sb = b.numero_slot ?? Number.MAX_SAFE_INTEGER;
+    return sa - sb;
+  });
+}
+
 function idComoTexto(valor: string | number | null | undefined) {
   return valor == null ? "" : String(valor);
 }
 
 export function hayCuadroEliminatorio(partidos: PartidoParaCuadro[]) {
-  return partidos.some((partido) => esFaseDeCuadro(partido.fase));
+  return partidos.some((partido) => esPartidoEliminatorio(partido));
 }
 
 export function fasePrimeraRondaDelCuadro(partidos: PartidoParaCuadro[]) {
-  for (const fase of FASES_CUADRO) {
-    if (partidos.some((partido) => partido.fase === fase)) return fase;
+  const delCuadro = partidos.filter(esPartidoEliminatorio);
+  for (const ronda of FASES_CUADRO) {
+    if (delCuadro.some((partido) => rondaDelPartido(partido) === ronda)) {
+      return ronda;
+    }
   }
   return null;
 }
 
 export function partidosDeLaPrimeraRonda(partidos: PartidoParaCuadro[]) {
-  const fase = fasePrimeraRondaDelCuadro(partidos);
-  if (!fase) return [];
-  return [...partidos]
-    .filter((partido) => partido.fase === fase)
-    .sort((a, b) => idComoTexto(a.id).localeCompare(idComoTexto(b.id)));
+  const ronda = fasePrimeraRondaDelCuadro(partidos);
+  if (!ronda) return [];
+  return ordenarPorNumeroSlot(
+    partidos.filter(
+      (partido) =>
+        esPartidoEliminatorio(partido) && rondaDelPartido(partido) === ronda
+    )
+  );
 }
 
 export const RONDA_CUADRO_LABELS: Record<string, string> = {
@@ -60,9 +139,9 @@ export const RONDA_CUADRO_LABELS: Record<string, string> = {
 
 export function rondasActivasDelCuadro(partidos: PartidoParaCuadro[]) {
   const presentes = new Set(
-    partidos.filter((partido) => esFaseDeCuadro(partido.fase)).map((p) => p.fase)
+    partidos.filter(esPartidoEliminatorio).map((partido) => rondaDelPartido(partido))
   );
-  return FASES_CUADRO.filter((fase) => presentes.has(fase));
+  return FASES_CUADRO.filter((ronda) => presentes.has(ronda));
 }
 
 /** Primera ronda (en orden del cuadro) que todavía tiene partidos sin finalizar. */
@@ -70,12 +149,15 @@ export function rondaMasAvanzadaConActividad(partidos: PartidoParaCuadro[]) {
   const rondas = rondasActivasDelCuadro(partidos);
   if (rondas.length === 0) return null;
 
-  for (const fase of rondas) {
-    const deRonda = partidos.filter((partido) => partido.fase === fase);
+  for (const ronda of rondas) {
+    const deRonda = partidos.filter(
+      (partido) =>
+        esPartidoEliminatorio(partido) && rondaDelPartido(partido) === ronda
+    );
     const sigueAbierta = deRonda.some(
       (partido) => partido.estado !== "Finalizado"
     );
-    if (sigueAbierta) return fase;
+    if (sigueAbierta) return ronda;
   }
 
   return rondas[rondas.length - 1];
@@ -85,13 +167,12 @@ export function idsRondasPosterioresDe(
   partidos: PartidoParaCuadro[],
   faseActual: string
 ) {
-  const ordenActual = ORDEN_FASE[faseActual] ?? 0;
+  const ordenActual = ORDEN_RONDA[faseActual] ?? 0;
   return partidos
-    .filter(
-      (partido) =>
-        esFaseDeCuadro(partido.fase) &&
-        (ORDEN_FASE[partido.fase] ?? 0) > ordenActual
-    )
+    .filter((partido) => {
+      if (!esPartidoEliminatorio(partido)) return false;
+      return (ORDEN_RONDA[rondaDelPartido(partido)] ?? 0) > ordenActual;
+    })
     .map((partido) => partido.id);
 }
 
@@ -99,7 +180,10 @@ export function rondaAunNoHabilitada(
   partidos: PartidoParaCuadro[],
   fase: string
 ) {
-  const deRonda = partidos.filter((partido) => partido.fase === fase);
+  const deRonda = partidos.filter(
+    (partido) =>
+      esPartidoEliminatorio(partido) && rondaDelPartido(partido) === fase
+  );
   if (deRonda.length === 0) return true;
   return deRonda.every((partido) => !partido.jugador_1 && !partido.jugador_2);
 }
@@ -108,15 +192,14 @@ function ordenarPartidosDeRonda(
   ronda: PartidoParaCuadro[],
   siguiente: PartidoParaCuadro[]
 ) {
+  const porSlot = ordenarPorNumeroSlot(ronda);
   if (siguiente.length === 0) {
-    return [...ronda].sort((a, b) =>
-      idComoTexto(a.id).localeCompare(idComoTexto(b.id))
-    );
+    return porSlot;
   }
 
   const porDestino = new Map<string, PartidoParaCuadro[]>();
   const resto: PartidoParaCuadro[] = [];
-  for (const partido of ronda) {
+  for (const partido of porSlot) {
     const dest = idComoTexto(partido.siguiente_partido_id);
     if (!dest) {
       resto.push(partido);
@@ -129,27 +212,28 @@ function ordenarPartidosDeRonda(
 
   const ordenados: PartidoParaCuadro[] = [];
   for (const destino of siguiente) {
-    const alimentan = porDestino.get(idComoTexto(destino.id)) ?? [];
-    alimentan.sort((a, b) =>
-      idComoTexto(a.id).localeCompare(idComoTexto(b.id))
+    const alimentan = ordenarPorNumeroSlot(
+      porDestino.get(idComoTexto(destino.id)) ?? []
     );
     ordenados.push(...alimentan);
     porDestino.delete(idComoTexto(destino.id));
   }
   for (const sobrantes of porDestino.values()) {
-    ordenados.push(...sobrantes);
+    ordenados.push(...ordenarPorNumeroSlot(sobrantes));
   }
-  resto.sort((a, b) => idComoTexto(a.id).localeCompare(idComoTexto(b.id)));
   ordenados.push(...resto);
   return ordenados;
 }
 
-/** Columnas del árbol (primera ronda → Final), alineadas por `siguiente_partido_id`. */
+/** Columnas del árbol: solo partidos persistidos, ordenados por numero_slot. */
 export function columnasDelArbolCuadro(partidos: PartidoParaCuadro[]) {
-  const rondas = rondasActivasDelCuadro(partidos);
-  const columnas = rondas.map((fase) => ({
-    fase,
-    partidos: partidos.filter((partido) => partido.fase === fase),
+  const delCuadro = partidos.filter(esPartidoEliminatorio);
+  const rondas = rondasActivasDelCuadro(delCuadro);
+  const columnas = rondas.map((ronda) => ({
+    fase: ronda,
+    partidos: ordenarPorNumeroSlot(
+      delCuadro.filter((partido) => rondaDelPartido(partido) === ronda)
+    ),
   }));
 
   for (let i = columnas.length - 1; i >= 0; i--) {
@@ -160,7 +244,7 @@ export function columnasDelArbolCuadro(partidos: PartidoParaCuadro[]) {
     };
   }
 
-  return columnas;
+  return columnas.filter((columna) => columna.partidos.length > 0);
 }
 
 /**
@@ -173,7 +257,7 @@ export function partidosDelCuadroPorJugadores(
   jugadorIds: string[]
 ): PartidoParaCuadro[] {
   const idsJugadores = new Set(jugadorIds);
-  const delCuadro = partidos.filter((partido) => esFaseDeCuadro(partido.fase));
+  const delCuadro = partidos.filter(esPartidoEliminatorio);
   const semillas = delCuadro.filter((partido) => {
     const j1 = partido.jugador_1?.id;
     const j2 = partido.jugador_2?.id;
@@ -201,5 +285,7 @@ export function partidosDelCuadroPorJugadores(
     }
   }
 
-  return delCuadro.filter((partido) => incluidos.has(idComoTexto(partido.id)));
+  return ordenarPorNumeroSlot(
+    delCuadro.filter((partido) => incluidos.has(idComoTexto(partido.id)))
+  );
 }

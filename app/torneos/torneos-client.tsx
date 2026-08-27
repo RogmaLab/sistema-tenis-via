@@ -117,11 +117,13 @@ export function TorneosClient() {
   }, [menuAbiertoId]);
 
   function abrirModalNuevo() {
+    if (!isAdmin) return;
     setTorneoEditando(null);
     setIsModalOpen(true);
   }
 
   function abrirModalEdicion(torneo: Torneo) {
+    if (!isAdmin) return;
     setTorneoEditando(torneo);
     setIsModalOpen(true);
     setMenuAbiertoId(null);
@@ -134,6 +136,7 @@ export function TorneosClient() {
 
   async function handleGuardarTorneo(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!isAdmin) return;
 
     const form = event.currentTarget;
     const formData = new FormData(form);
@@ -199,6 +202,7 @@ export function TorneosClient() {
   }
 
   async function handleEliminarTorneo(id: string) {
+    if (!isAdmin) return;
     setMenuAbiertoId(null);
 
     const confirmado = window.confirm(
@@ -220,6 +224,7 @@ export function TorneosClient() {
   // actual. calcularEstadoVisual (lib/torneo-estado.ts) lee esa fecha y
   // pasa el badge a "Torneo en curso" sin tocar la columna estado.
   async function handleCerrarInscripcionManualmente(torneo: Torneo) {
+    if (!isAdmin) return;
     setMenuAbiertoId(null);
 
     const confirmado = window.confirm(
@@ -254,7 +259,7 @@ export function TorneosClient() {
   const listaActual = mostrarArchivados ? torneosArchivados : torneosVisibles;
 
   return (
-    <main className="min-h-screen bg-background px-4 py-8 sm:px-6 lg:px-10">
+    <main className="bg-background px-4 py-8 sm:px-6 lg:px-10">
       <div className="mx-auto max-w-5xl">
         {/* Encabezado */}
         <header className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -430,7 +435,7 @@ export function TorneosClient() {
       </div>
 
       {/* Modal: Configuración de Torneo (nuevo o edición) */}
-      {isModalOpen && (
+      {isModalOpen && isAdmin && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4 py-4"
           onClick={cerrarModal}

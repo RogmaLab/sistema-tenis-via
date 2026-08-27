@@ -28,7 +28,7 @@ function whatsappHref(numero: string) {
 }
 
 export function JugadoresClient() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, loading: authLoading } = useAuth();
   const supabase = createClient();
 
   const [jugadores, setJugadores] = useState<Jugador[]>([]);
@@ -46,18 +46,52 @@ export function JugadoresClient() {
   // para la carga inicial (efecto de más abajo) como para `cargarJugadores`,
   // que usan los handlers para recargar después de crear/editar/eliminar.
   const fetchJugadoresDesdeSupabase = useCallback(async () => {
-    const { data, error } = await supabase
-      .from("jugadores")
-      .select("*")
+    const desdeVista = await supabase
+      .from("jugadores_listado")
+      .select("id, nombre_completo, whatsapp, categoria, genero, created_at")
       .order("created_at", { ascending: false });
 
-    if (error) {
-      console.error("Error al cargar jugadores:", error.message);
-      return null;
+    let filas: {
+      id: string;
+      nombre_completo: string;
+      whatsapp?: string | null;
+      categoria: string;
+      genero: string;
+      created_at?: string;
+    }[] | null = null;
+
+    if (!desdeVista.error) {
+      filas = desdeVista.data;
+    } else if (isAdmin) {
+      const { data, error } = await supabase
+        .from("jugadores")
+        .select("id, nombre_completo, whatsapp, categoria, genero, created_at")
+        .order("created_at", { ascending: false });
+      if (error) {
+        console.error("Error al cargar jugadores:", error.message);
+        return null;
+      }
+      filas = data;
+    } else {
+      const { data, error } = await supabase
+        .from("jugadores")
+        .select("id, nombre_completo, categoria, genero, created_at")
+        .order("created_at", { ascending: false });
+      if (error) {
+        console.error("Error al cargar jugadores:", error.message);
+        return null;
+      }
+      filas = data;
     }
 
-    return (data as Jugador[]) ?? [];
-  }, [supabase]);
+    return (filas ?? []).map((jugador) => ({
+      id: jugador.id,
+      nombre_completo: jugador.nombre_completo,
+      categoria: jugador.categoria,
+      genero: jugador.genero,
+      whatsapp: isAdmin ? (jugador.whatsapp ?? "") : "",
+    }));
+  }, [supabase, isAdmin]);
 
   // Usado por los handlers (crear/editar/eliminar): no es un efecto, así
   // que puede setear estado sin disparar react-hooks/set-state-in-effect.
@@ -74,6 +108,8 @@ export function JugadoresClient() {
   // llamada síncrona. `ignore` evita pisar el estado si el componente se
   // desmonta antes de que resuelva.
   useEffect(() => {
+    if (authLoading) return;
+
     let ignore = false;
 
     fetchJugadoresDesdeSupabase().then((data) => {
@@ -85,7 +121,7 @@ export function JugadoresClient() {
     return () => {
       ignore = true;
     };
-  }, [fetchJugadoresDesdeSupabase]);
+  }, [authLoading, fetchJugadoresDesdeSupabase]);
 
   const hayFiltrosActivos =
     filtroCategoria !== "todas" || filtroGenero !== "todos";
@@ -104,11 +140,13 @@ export function JugadoresClient() {
   }, [jugadores, busqueda, filtroCategoria, filtroGenero]);
 
   function abrirModalNuevo() {
+    if (!isAdmin) return;
     setJugadorEditando(null);
     setIsModalOpen(true);
   }
 
   function abrirModalEdicion(jugador: Jugador) {
+    if (!isAdmin) return;
     setJugadorEditando(jugador);
     setIsModalOpen(true);
   }
@@ -120,6 +158,7 @@ export function JugadoresClient() {
 
   async function handleGuardarJugador(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!isAdmin) return;
 
     const form = event.currentTarget;
     const formData = new FormData(form);
@@ -166,6 +205,7 @@ export function JugadoresClient() {
   }
 
   async function handleEliminarJugador(id: string) {
+    if (!isAdmin) return;
     const confirmado = window.confirm(
       "¿Seguro que querés eliminar a este jugador?"
     );
@@ -187,7 +227,7 @@ export function JugadoresClient() {
   }
 
   return (
-    <main className="min-h-screen bg-background px-4 py-8 sm:px-6 lg:px-10">
+    <main className="bg-background px-4 py-8 sm:px-6 lg:px-10">
       <div className="mx-auto max-w-5xl">
         {/* Encabezado del panel */}
         <header className="mb-6">
@@ -316,9 +356,11 @@ export function JugadoresClient() {
                   <thead>
                     <tr className="border-b border-border text-xs uppercase tracking-wide text-foreground/50">
                       <th className="px-4 py-3 font-medium sm:px-6">Nombre</th>
-                      <th className="px-4 py-3 font-medium sm:px-6">
-                        WhatsApp
-                      </th>
+                      {isAdmin && (
+                        <th className="px-4 py-3 font-medium sm:px-6">
+                          WhatsApp
+                        </th>
+                      )}
                       <th className="px-4 py-3 font-medium sm:px-6">
                         Categoría
                       </th>
@@ -341,17 +383,19 @@ export function JugadoresClient() {
                         <td className="px-4 py-3 font-medium text-foreground sm:px-6">
                           {jugador.nombre_completo}
                         </td>
-                        <td className="px-4 py-3 sm:px-6">
-                          <a
-                            href={whatsappHref(jugador.whatsapp)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1.5 text-foreground/70 transition hover:text-foreground"
-                          >
-                            {jugador.whatsapp}
-                            <WhatsAppIcon className="h-4 w-4 shrink-0 text-[#25D366]" />
-                          </a>
-                        </td>
+                        {isAdmin && (
+                          <td className="px-4 py-3 sm:px-6">
+                            <a
+                              href={whatsappHref(jugador.whatsapp)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 text-foreground/70 transition hover:text-foreground"
+                            >
+                              {jugador.whatsapp}
+                              <WhatsAppIcon className="h-4 w-4 shrink-0 text-[#25D366]" />
+                            </a>
+                          </td>
+                        )}
                         <td className="px-4 py-3 sm:px-6">
                           <span className="inline-block rounded-full border border-border px-2.5 py-1 text-xs font-semibold text-foreground/80">
                             {jugador.categoria}
@@ -401,7 +445,7 @@ export function JugadoresClient() {
       </div>
 
       {/* Modal: Nuevo Jugador / Editar Jugador */}
-      {isModalOpen && (
+      {isModalOpen && isAdmin && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4"
           onClick={cerrarModal}

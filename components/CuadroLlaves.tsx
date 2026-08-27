@@ -4,6 +4,7 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { Trophy } from "lucide-react";
 import {
   columnasDelArbolCuadro,
+  rondaDelPartido,
   RONDA_CUADRO_LABELS,
   type PartidoParaCuadro,
 } from "@/lib/adaptar-cuadro-torneo";
@@ -28,8 +29,8 @@ interface CuadroLlavesProps {
   partidos: PartidoLlave[];
   rondaResaltada?: string | null;
   isAdmin: boolean;
-  onCargarResultado: (partido: PartidoLlave) => void;
-  onProgramarPartido: (partido: PartidoLlave) => void;
+  onCargarResultado?: (partido: PartidoLlave) => void;
+  onProgramarPartido?: (partido: PartidoLlave) => void;
 }
 
 interface LineaLlave {
@@ -113,7 +114,7 @@ export function CuadroLlaves({
   const columnasGrid = `repeat(${columnas.length}, minmax(0, 1fr))`;
   const partidoFinal = columnas.at(-1)?.partidos[0];
   const mostrarCampeon =
-    Boolean(partidoFinal) && columnas.at(-1)?.fase === "Final";
+    partidoFinal != null && rondaDelPartido(partidoFinal) === "Final";
 
   useLayoutEffect(() => {
     const marco = marcoRef.current;
@@ -247,8 +248,16 @@ export function CuadroLlaves({
                         if (el) nodosRef.current.set(String(partido.id), el);
                         else nodosRef.current.delete(String(partido.id));
                       }}
-                      onCargarResultado={() => onCargarResultado(partido)}
-                      onProgramarPartido={() => onProgramarPartido(partido)}
+                      onCargarResultado={
+                        onCargarResultado
+                          ? () => onCargarResultado(partido)
+                          : undefined
+                      }
+                      onProgramarPartido={
+                        onProgramarPartido
+                          ? () => onProgramarPartido(partido)
+                          : undefined
+                      }
                     />
                   </div>
                 </div>

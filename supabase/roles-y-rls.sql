@@ -92,7 +92,10 @@ create policy "perfiles_update_solo_admin"
 -- -----------------------------------------------------------------------------
 -- 5) Candado de titanio: torneos / partidos / jugadores
 --    SELECT: cualquiera (anon o authenticated)
---    INSERT / UPDATE / DELETE: solo rol = admin
+--    INSERT: admin, o el usuario creando SU ficha (user_id = auth.uid())
+--    UPDATE: admin, o el dueño de la ficha (user_id = auth.uid())
+--    DELETE: solo admin
+--    Claim de ficha ajena: función vincular_mi_jugador (no UPDATE directo)
 -- -----------------------------------------------------------------------------
 
 -- --- torneos ---
@@ -160,6 +163,16 @@ create policy "partidos_delete_admin"
 -- --- jugadores ---
 alter table public.jugadores enable row level security;
 
+alter table public.jugadores
+  add column if not exists user_id uuid references auth.users (id) on delete set null;
+
+comment on column public.jugadores.user_id is
+  'Cuenta de auth vinculada. NULL = ficha precargada, todavía no reclamada.';
+
+create unique index if not exists jugadores_user_id_unico
+  on public.jugadores (user_id)
+  where user_id is not null;
+
 drop policy if exists "jugadores_select_publico" on public.jugadores;
 create policy "jugadores_select_publico"
   on public.jugadores
@@ -167,11 +180,12 @@ create policy "jugadores_select_publico"
   using (true);
 
 drop policy if exists "jugadores_insert_admin" on public.jugadores;
-create policy "jugadores_insert_admin"
+drop policy if exists "jugadores_insert_admin_o_propio" on public.jugadores;
+create policy "jugadores_insert_admin_o_propio"
   on public.jugadores
   for insert
   to authenticated
-  with check (public.es_admin());
+  with check (public.es_admin() or user_id = auth.uid());
 
 drop policy if exists "jugadores_update_admin" on public.jugadores;
 create policy "jugadores_update_admin"
@@ -181,12 +195,54 @@ create policy "jugadores_update_admin"
   using (public.es_admin())
   with check (public.es_admin());
 
+drop policy if exists "jugadores_update_propio" on public.jugadores;
+create policy "jugadores_update_propio"
+  on public.jugadores
+  for update
+  to authenticated
+  using (user_id = auth.uid())
+  with check (user_id = auth.uid());
+
 drop policy if exists "jugadores_delete_admin" on public.jugadores;
 create policy "jugadores_delete_admin"
   on public.jugadores
   for delete
   to authenticated
   using (public.es_admin());
+
+create or replace function public.vincular_mi_jugador(p_jugador_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  filas integer;
+begin
+  if auth.uid() is null then
+    raise exception 'Tenés que iniciar sesión.';
+  end if;
+
+  if exists (
+    select 1 from public.jugadores j where j.user_id = auth.uid()
+  ) then
+    raise exception 'Ya tenés un perfil de jugador vinculado.';
+  end if;
+
+  update public.jugadores
+  set user_id = auth.uid()
+  where id = p_jugador_id
+    and user_id is null;
+
+  get diagnostics filas = row_count;
+  if filas = 0 then
+    raise exception 'Ese perfil no está disponible para vincular.';
+  end if;
+end;
+$$;
+
+revoke all on function public.vincular_mi_jugador(uuid) from public;
+grant execute on function public.vincular_mi_jugador(uuid) to authenticated;
 
 -- -----------------------------------------------------------------------------
 -- 6) Extra recomendado: torneo_jugadores (inscripciones)
@@ -224,7 +280,55 @@ create policy "torneo_jugadores_delete_admin"
   using (public.es_admin());
 
 -- -----------------------------------------------------------------------------
--- 7) Promover tu primer admin (reemplazá el email)
+-- 8) Privileges de escritura: anon no muta. authenticated escribe solo
+--    si pasa RLS (es_admin()).
+-- -----------------------------------------------------------------------------
+revoke insert, update, delete on public.torneos from anon;
+revoke insert, update, delete on public.partidos from anon;
+revoke insert, update, delete on public.jugadores from anon;
+revoke insert, update, delete on public.torneo_jugadores from anon;
+revoke insert, update, delete on public.perfiles from anon;
+
+grant select on public.torneos to anon, authenticated;
+grant select on public.partidos to anon, authenticated;
+grant select on public.jugadores to anon, authenticated;
+grant select on public.torneo_jugadores to anon, authenticated;
+
+grant insert, update, delete on public.torneos to authenticated;
+grant insert, update, delete on public.partidos to authenticated;
+grant insert, update, delete on public.jugadores to authenticated;
+grant insert, update, delete on public.torneo_jugadores to authenticated;
+
+-- WhatsApp: RLS es por fila, no por columna. Revocamos SELECT del teléfono
+-- en la tabla (anon/authenticated). La vista (security definer / invoker=false)
+-- lee con privilegios del owner y enmascara: NULL si el JWT no es admin.
+-- Los embeds de partidos/torneo_jugadores no piden whatsapp, así que siguen OK.
+revoke select (whatsapp) on public.jugadores from public, anon, authenticated;
+
+drop view if exists public.jugadores_listado;
+create view public.jugadores_listado
+with (security_invoker = false)
+as
+select
+  id,
+  nombre_completo,
+  categoria,
+  genero,
+  created_at,
+  user_id,
+  case
+    when public.es_admin() or user_id = auth.uid() then whatsapp
+    else null
+  end as whatsapp
+from public.jugadores;
+
+comment on view public.jugadores_listado is
+  'Listado de jugadores. whatsapp solo para admin o el dueño de la ficha.';
+
+grant select on public.jugadores_listado to anon, authenticated;
+
+-- -----------------------------------------------------------------------------
+-- 9) Promover tu primer admin (reemplazá el email)
 -- -----------------------------------------------------------------------------
 -- update public.perfiles
 -- set rol = 'admin'

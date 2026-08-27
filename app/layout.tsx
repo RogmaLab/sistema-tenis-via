@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/components/auth-provider";
+import { ClaimPerfilGate } from "@/components/ClaimPerfilGate";
+import { CreditoRogmaLab } from "@/components/CreditoRogmaLab";
 import { Navigation } from "@/components/navigation";
 import { Toaster } from "@/components/toaster";
 
@@ -30,7 +32,12 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <AuthProvider>
           <Navigation />
           {/* pb-20: deja aire para el BottomNav en mobile (no tapa CTAs/listas) */}
-          <div className="flex-1 pb-20 md:pb-0">{children}</div>
+          <div className="flex min-h-screen flex-1 flex-col pb-20 md:pb-0">
+            <div className="flex-1">
+              <ClaimPerfilGate>{children}</ClaimPerfilGate>
+            </div>
+            <CreditoRogmaLab />
+          </div>
           <Toaster />
         </AuthProvider>
       </body>

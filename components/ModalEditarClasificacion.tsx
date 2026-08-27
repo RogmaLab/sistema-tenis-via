@@ -12,6 +12,7 @@ import {
   type CruceDraft,
 } from "@/lib/motor-torneo";
 import type { Jugador } from "@/lib/types";
+import { useAuth } from "@/components/auth-provider";
 
 interface PartidoClasificacionVista {
   id: string;
@@ -53,6 +54,7 @@ export function ModalEditarClasificacion({
   onCerrar,
   onGuardado,
 }: ModalEditarClasificacionProps) {
+  const { isAdmin } = useAuth();
   const [draft, setDraft] = useState<CruceDraft[]>(() =>
     partidos.map((partido) => ({
       id: partido.id,
@@ -123,6 +125,7 @@ export function ModalEditarClasificacion({
   }
 
   async function handleGuardar() {
+    if (!isAdmin) return;
     if (hayError) {
       toast.error("Completá los cruces en rojo antes de guardar.");
       return;

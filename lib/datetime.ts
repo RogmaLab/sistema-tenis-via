@@ -100,11 +100,39 @@ export function toTimeInputValue(fechaProgramada: string | null) {
   return local ? local.slice(11, 16) : "";
 }
 
+const padHora = (valor: number) => String(valor).padStart(2, "0");
+
+/** Horas 00–23 para el modal de programación. */
+export const HORAS_PROGRAMACION = Array.from({ length: 24 }, (_, indice) =>
+  padHora(indice)
+);
+
+/** Únicos minutos válidos en cancha: en punto o y media. */
+export const MINUTOS_PROGRAMACION = ["00", "30"] as const;
+
+/**
+ * Normaliza "HH:MM" a hora en punto o y media (09:00 / 09:30).
+ * Minutos 0–29 → :00; 30–59 → :30.
+ */
+export function snapHoraAMediaHora(hora: string): string {
+  const match = /^(\d{1,2})(?::(\d{1,2}))?/.exec(hora.trim());
+  if (!match) return "00:00";
+
+  const horas = Math.min(23, Math.max(0, Number.parseInt(match[1], 10)));
+  const minutosLeidos = Number.parseInt(match[2] ?? "0", 10);
+  const minutos =
+    Number.isFinite(minutosLeidos) && minutosLeidos >= 30 ? 30 : 0;
+
+  return `${padHora(horas)}:${padHora(minutos)}`;
+}
+
 /** Junta date + time locales en un ISO para `partidos.fecha_programada`. */
 export function fromDateAndTimeValues(
   fecha: string,
   hora: string
 ): string | null {
   if (!fecha) return null;
-  return fromDatetimeLocalValue(`${fecha}T${hora || "00:00"}`);
+  return fromDatetimeLocalValue(
+    `${fecha}T${snapHoraAMediaHora(hora || "00:00")}`
+  );
 }

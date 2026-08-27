@@ -12,12 +12,15 @@ import {
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 import type { RolUsuario } from "@/lib/auth/types";
+import { fetchIdJugadorVinculado } from "@/lib/jugador-vinculado";
 
 interface AuthContextValue {
   user: User | null;
   rol: RolUsuario | null;
   isAdmin: boolean;
   loading: boolean;
+  /** Ficha de `jugadores` vinculada a esta cuenta, o null. */
+  jugadorId: string | null;
   refreshPerfil: () => Promise<void>;
 }
 
@@ -41,6 +44,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const supabase = useMemo(() => createClient(), []);
   const [user, setUser] = useState<User | null>(null);
   const [rol, setRol] = useState<RolUsuario | null>(null);
+  const [jugadorId, setJugadorId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   const refreshPerfil = useCallback(async () => {
@@ -49,9 +53,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(actual);
     if (!actual) {
       setRol(null);
+      setJugadorId(null);
       return;
     }
-    setRol(await fetchRol(supabase, actual.id));
+    const [rolActual, idJugador] = await Promise.all([
+      fetchRol(supabase, actual.id),
+      fetchIdJugadorVinculado(supabase, actual.id),
+    ]);
+    setRol(rolActual);
+    setJugadorId(idJugador);
   }, [supabase]);
 
   useEffect(() => {
@@ -65,9 +75,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(actual);
         if (!actual) {
           setRol(null);
+          setJugadorId(null);
           return;
         }
-        setRol(await fetchRol(supabase, actual.id));
+        const [rolActual, idJugador] = await Promise.all([
+          fetchRol(supabase, actual.id),
+          fetchIdJugadorVinculado(supabase, actual.id),
+        ]);
+        if (!activo) return;
+        setRol(rolActual);
+        setJugadorId(idJugador);
       } finally {
         if (activo) setLoading(false);
       }
@@ -80,10 +97,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(actual);
       if (!actual) {
         setRol(null);
+        setJugadorId(null);
         setLoading(false);
         return;
       }
-      setRol(await fetchRol(supabase, actual.id));
+      const [rolActual, idJugador] = await Promise.all([
+        fetchRol(supabase, actual.id),
+        fetchIdJugadorVinculado(supabase, actual.id),
+      ]);
+      setRol(rolActual);
+      setJugadorId(idJugador);
       setLoading(false);
     });
 
@@ -99,9 +122,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       rol,
       isAdmin: rol === "admin",
       loading,
+      jugadorId,
       refreshPerfil,
     }),
-    [user, rol, loading, refreshPerfil]
+    [user, rol, loading, jugadorId, refreshPerfil]
   );
 
   return (
@@ -119,6 +143,6 @@ export function useAuth() {
 
 /** Alias semántico: mismo contexto, enfocado al perfil/rol. */
 export function usePerfil() {
-  const { user, rol, isAdmin, loading, refreshPerfil } = useAuth();
-  return { user, rol, isAdmin, loading, refreshPerfil };
+  const { user, rol, isAdmin, loading, jugadorId, refreshPerfil } = useAuth();
+  return { user, rol, isAdmin, loading, jugadorId, refreshPerfil };
 }

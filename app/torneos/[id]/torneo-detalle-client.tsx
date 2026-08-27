@@ -12,6 +12,7 @@ import {
 } from "react";
 import {
   ArrowLeft,
+  Pencil,
   Shuffle,
   Trash2,
   Trophy,
@@ -21,6 +22,7 @@ import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import {
   actualizarResultadoPartidoConPropagacion,
+  construirOpcionesCuadroManual,
   generarCrucesClasificacion,
   generarCuadroFinal,
   planClasificacionPreliminar,
@@ -48,13 +50,20 @@ import {
   toDatetimeLocalValue,
 } from "@/lib/datetime";
 import {
+  fasePrimeraRondaDelCuadro,
   hayCuadroEliminatorio,
+  idsRondasPosterioresDe,
+  metadatosDesdeFaseEspejo,
+  partidosDeLaPrimeraRonda,
   rondasActivasDelCuadro,
   rondaMasAvanzadaConActividad,
   RONDA_CUADRO_LABELS,
 } from "@/lib/adaptar-cuadro-torneo";
 import { CuadroLlaves } from "@/components/CuadroLlaves";
 import { FaseClasificacionTab } from "@/components/FaseClasificacionTab";
+import { ModalEditarPrimeraRonda } from "@/components/ModalEditarPrimeraRonda";
+import { ModalCargarResultado } from "@/components/ModalCargarResultado";
+import { RESULTADO_WALKOVER } from "@/lib/motor-ranking";
 import { ModalProgramarPartido } from "@/components/ModalProgramarPartido";
 import {
   categoriaDeInscripcion,
@@ -71,6 +80,9 @@ interface PartidoConJugadores {
   estado: EstadoPartido;
   ganador_id: string | null;
   fase: string;
+  tipo_fase?: string | null;
+  ronda?: string | null;
+  numero_slot?: number | null;
   categoria: string | null;
   cancha: string | null;
   fecha_programada: string | null;
@@ -78,19 +90,6 @@ interface PartidoConJugadores {
   jugador_1: { id: string; nombre_completo: string } | null;
   jugador_2: { id: string; nombre_completo: string } | null;
 }
-
-// Marcador de un set: games de cada jugador como texto (input controlado),
-// vacío mientras no se cargó. El tercer set es opcional (super tie-break).
-interface SetScore {
-  j1: string;
-  j2: string;
-}
-
-const SETS_VACIOS: SetScore[] = [
-  { j1: "", j2: "" },
-  { j1: "", j2: "" },
-  { j1: "", j2: "" },
-];
 
 function EmptyStateCategoria() {
   return (
@@ -137,14 +136,10 @@ export function TorneoDetalleClient() {
     useState<PartidoConJugadores | null>(null);
   const [partidoProgramando, setPartidoProgramando] =
     useState<PartidoConJugadores | null>(null);
-  const [setsResultado, setSetsResultado] = useState<SetScore[]>(SETS_VACIOS);
-  // Solo se setea cuando el usuario toca explícitamente un jugador para
-  // corregir el ganador a mano (ej. retiro a mitad de partido). El ganador
-  // "real" que se usa en pantalla y al guardar es el derivado más abajo
-  // (ganadorManualId si existe, si no el calculado automáticamente).
-  const [ganadorManualId, setGanadorManualId] = useState<string | null>(null);
   const [partidoEditando, setPartidoEditando] =
     useState<PartidoConJugadores | null>(null);
+  const [isModalEditarCuadroOpen, setIsModalEditarCuadroOpen] =
+    useState(false);
   const [pestanaActiva, setPestanaActiva] =
     useState<PestanaDetalle>("jugadores");
   const [categoriaFiltro, setCategoriaFiltro] = useState("Todas");
@@ -182,7 +177,7 @@ export function TorneoDetalleClient() {
   const fetchTodosLosJugadoresDesdeSupabase = useCallback(async () => {
     const { data, error } = await supabase
       .from("jugadores")
-      .select("id, nombre_completo, whatsapp, categoria, genero")
+      .select("id, nombre_completo, categoria, genero")
       .order("nombre_completo", { ascending: true });
 
     if (error) {
@@ -190,7 +185,10 @@ export function TorneoDetalleClient() {
       return [];
     }
 
-    return (data as Jugador[]) ?? [];
+    return ((data as Omit<Jugador, "whatsapp">[]) ?? []).map((jugador) => ({
+      ...jugador,
+      whatsapp: "",
+    }));
   }, [supabase]);
 
   const fetchPartidosDesdeSupabase = useCallback(async () => {
@@ -381,6 +379,61 @@ export function TorneoDetalleClient() {
     rondasCuadroDisponibles.some((fase) => fase === rondaCuadroManual)
       ? rondaCuadroManual
       : rondaCuadroSugerida;
+  const fasePrimeraRondaCuadro = useMemo(
+    () => fasePrimeraRondaDelCuadro(partidosCuadroCategoria),
+    [partidosCuadroCategoria]
+  );
+  const partidosPrimeraRondaCuadro = useMemo(
+    () => partidosDeLaPrimeraRonda(partidosCuadroCategoria),
+    [partidosCuadroCategoria]
+  );
+  const nombrePorIdCategoria = useMemo(() => {
+    const mapa = new Map<string, string>();
+    for (const inscripto of inscriptosFiltrados) {
+      mapa.set(inscripto.jugador.id, inscripto.jugador.nombre_completo);
+    }
+    for (const partido of [
+      ...partidosClasificacionFiltrados,
+      ...partidosCuadroCategoria,
+    ]) {
+      if (partido.jugador_1) {
+        mapa.set(partido.jugador_1.id, partido.jugador_1.nombre_completo);
+      }
+      if (partido.jugador_2) {
+        mapa.set(partido.jugador_2.id, partido.jugador_2.nombre_completo);
+      }
+    }
+    return mapa;
+  }, [
+    inscriptosFiltrados,
+    partidosClasificacionFiltrados,
+    partidosCuadroCategoria,
+  ]);
+  const opcionesCuadroManual = useMemo(
+    () =>
+      construirOpcionesCuadroManual(
+        partidosClasificacionFiltrados.map((partido) => ({
+          jugador_1_id: partido.jugador_1?.id ?? null,
+          jugador_2_id: partido.jugador_2?.id ?? null,
+          ganador_id: partido.ganador_id,
+          estado: partido.estado,
+        })),
+        idsJugadoresFiltrados,
+        nombrePorIdCategoria
+      ),
+    [
+      partidosClasificacionFiltrados,
+      idsJugadoresFiltrados,
+      nombrePorIdCategoria,
+    ]
+  );
+  const idsRondasPosterioresPrimeraRonda = useMemo(() => {
+    if (!fasePrimeraRondaCuadro) return [];
+    return idsRondasPosterioresDe(
+      partidosCuadroCategoria,
+      fasePrimeraRondaCuadro
+    );
+  }, [partidosCuadroCategoria, fasePrimeraRondaCuadro]);
 
   const hayCrucesSinGuardar =
     crucesDraft.length > 0 && partidosClasificacionFiltrados.length === 0;
@@ -463,51 +516,6 @@ export function TorneoDetalleClient() {
     setPartidoEditando(null);
   }
 
-  // Solo cuentan los sets donde se cargaron los games de ambos jugadores.
-  const setsValidos = useMemo(
-    () => setsResultado.filter((set) => set.j1 !== "" && set.j2 !== ""),
-    [setsResultado]
-  );
-
-  // Formatea los sets cargados al texto estándar que se guarda en
-  // "resultado" (ej. "6-4, 3-6, 10-7"), sin que el usuario escriba nada.
-  const resultadoTexto = useMemo(
-    () => setsValidos.map((set) => `${set.j1}-${set.j2}`).join(", "),
-    [setsValidos]
-  );
-
-  const setsGanadosJugador1 = setsValidos.filter(
-    (set) => Number(set.j1) > Number(set.j2)
-  ).length;
-  const setsGanadosJugador2 = setsValidos.filter(
-    (set) => Number(set.j2) > Number(set.j1)
-  ).length;
-
-  // Ganador calculado a partir de la mayoría de sets. Devuelve null si
-  // todavía no hay sets cargados o si están empatados (caso raro, pero
-  // posible mientras se está cargando el resultado).
-  const ganadorAutomaticoId = useMemo(() => {
-    if (!partidoCargandoResultado || setsValidos.length === 0) return null;
-    if (setsGanadosJugador1 === setsGanadosJugador2) return null;
-    return setsGanadosJugador1 > setsGanadosJugador2
-      ? (partidoCargandoResultado.jugador_1?.id ?? null)
-      : (partidoCargandoResultado.jugador_2?.id ?? null);
-  }, [
-    partidoCargandoResultado,
-    setsValidos.length,
-    setsGanadosJugador1,
-    setsGanadosJugador2,
-  ]);
-
-  // Ganador que se muestra y se guarda: el que el usuario eligió a mano
-  // tiene prioridad; si no tocó nada, se usa el calculado automáticamente
-  // a partir de los sets. Al ser un valor derivado (no un estado propio
-  // sincronizado con un efecto), se recalcula solo en cada render sin
-  // necesidad de useEffect.
-  const ganadorId = ganadorManualId ?? ganadorAutomaticoId;
-
-  const puedeGuardarResultado = setsValidos.length >= 2 && Boolean(ganadorId);
-
   // Estado visual del torneo (contempla el cierre automático de
   // inscripción). Se usa "inscripcion" como valor por defecto mientras el
   // torneo todavía no cargó; en la práctica solo se lee más abajo dentro
@@ -533,21 +541,6 @@ export function TorneoDetalleClient() {
     ? pestanaActiva
     : "jugadores";
 
-  function handleCambiarSet(
-    index: number,
-    jugador: "j1" | "j2",
-    valor: string
-  ) {
-    setSetsResultado((prev) =>
-      prev.map((set, i) => (i === index ? { ...set, [jugador]: valor } : set))
-    );
-    // Cualquier cambio en el marcador invalida la corrección manual previa:
-    // el ganador vuelve a calcularse solo a partir de los sets, tal como
-    // pide el flujo (el usuario debe volver a tocar un jugador si quiere
-    // forzarlo de nuevo).
-    setGanadorManualId(null);
-  }
-
   function cerrarModalInscribir() {
     setIsModalInscribirOpen(false);
     setIdsInscribir([]);
@@ -557,6 +550,7 @@ export function TorneoDetalleClient() {
   }
 
   function abrirModalInscribir() {
+    if (!isAdmin) return;
     setCategoriaInscribir(
       categoriaFiltro !== "Todas" ? categoriaFiltro : ""
     );
@@ -584,6 +578,7 @@ export function TorneoDetalleClient() {
 
   async function handleInscribirJugadores(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!isAdmin) return;
     if (idsInscribir.length === 0 || !categoriaInscribir) return;
 
     const idsPedido = [...idsInscribir];
@@ -641,6 +636,7 @@ export function TorneoDetalleClient() {
   }
 
   async function handleQuitarInscripto(inscripto: InscriptoTorneo) {
+    if (!isAdmin) return;
     const confirmado = window.confirm(
       `¿Seguro que querés quitar a ${inscripto.jugador.nombre_completo} de ${inscripto.categoria_inscripcion} en este torneo?`
     );
@@ -659,46 +655,28 @@ export function TorneoDetalleClient() {
     await cargarInscriptos();
   }
 
-  function parsearResultadoASets(resultado: string | null): SetScore[] {
-    const sets = SETS_VACIOS.map((set) => ({ ...set }));
-    if (!resultado) return sets;
-
-    const partes = resultado.split(",").map((parte) => parte.trim());
-    for (let i = 0; i < Math.min(partes.length, sets.length); i += 1) {
-      const [j1, j2] = partes[i].split("-").map((valor) => valor.trim());
-      if (j1 !== undefined && j2 !== undefined) {
-        sets[i] = { j1, j2 };
-      }
-    }
-    return sets;
-  }
-
   function abrirModalResultado(partido: PartidoConJugadores) {
-    setSetsResultado(parsearResultadoASets(partido.resultado));
-    setGanadorManualId(partido.ganador_id);
+    if (!isAdmin) return;
     setPartidoCargandoResultado(partido);
   }
 
   function cerrarModalResultado() {
     setPartidoCargandoResultado(null);
-    setSetsResultado(SETS_VACIOS);
-    setGanadorManualId(null);
   }
 
-  async function handleGuardarResultado(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!partidoCargandoResultado || !puedeGuardarResultado || !ganadorId) {
-      return;
-    }
+  async function handleGuardarResultado(payload: {
+    resultado: string;
+    ganador_id: string;
+  }) {
+    if (!isAdmin || !partidoCargandoResultado) return;
 
     const partidoActual = partidoCargandoResultado;
 
     try {
-      // Update + propagación al siguiente (con candado si cambia el ganador).
       await actualizarResultadoPartidoConPropagacion({
         partido_id: partidoActual.id,
-        resultado: resultadoTexto,
-        ganador_id: ganadorId,
+        resultado: payload.resultado,
+        ganador_id: payload.ganador_id,
       });
     } catch (error) {
       const mensaje =
@@ -733,7 +711,11 @@ export function TorneoDetalleClient() {
       }
     }
 
-    toast.success("Resultado guardado.");
+    toast.success(
+      payload.resultado === RESULTADO_WALKOVER
+        ? "W.O. registrado. El ganador avanza."
+        : "Resultado guardado."
+    );
     cerrarModalResultado();
     await cargarPartidos();
     if (partidoActual.fase === "Clasificacion") {
@@ -744,6 +726,7 @@ export function TorneoDetalleClient() {
 
   // Delega el armado al motor (ranking + extremos + byes / W.O.).
   async function handleGenerarCruces() {
+    if (!isAdmin) return;
     const jugadores = inscriptosFiltrados.map((inscripto) => ({
       id: inscripto.jugador.id,
       nombre_completo: inscripto.jugador.nombre_completo,
@@ -784,6 +767,7 @@ export function TorneoDetalleClient() {
   }
 
   async function handleGenerarCuadroFinal() {
+    if (!isAdmin) return;
     if (!clasificacionCategoriaCompleta) {
       toast.error(
         "Cargá todos los resultados de clasificación de esta categoría antes de armar el cuadro."
@@ -795,7 +779,7 @@ export function TorneoDetalleClient() {
     if (
       reemplazar &&
       !window.confirm(
-        "¿Regenerar el cuadro eliminatorio? Se borrarán las llaves actuales y se armará de nuevo desde la clasificación."
+        "¿Regenerar el cuadro eliminatorio? Se borrarán solo las llaves (Octavos/Cuartos/Semis/Final) de esta categoría. La clasificación y los inscriptos no se tocan."
       )
     ) {
       return;
@@ -806,8 +790,7 @@ export function TorneoDetalleClient() {
       const resultado = await generarCuadroFinal(
         torneoId,
         categoriaFiltro,
-        idsJugadoresFiltrados,
-        { reemplazarExistente: reemplazar }
+        idsJugadoresFiltrados
       );
 
       if (resultado.ok) {
@@ -832,6 +815,7 @@ export function TorneoDetalleClient() {
   }
 
   async function handleEliminarPartido(partido: PartidoConJugadores) {
+    if (!isAdmin) return;
     const confirmado = window.confirm(
       `¿Seguro que querés eliminar el partido "${partido.jugador_1?.nombre_completo ?? "?"} vs ${partido.jugador_2?.nombre_completo ?? "?"}"?`
     );
@@ -851,6 +835,7 @@ export function TorneoDetalleClient() {
   }
 
   function abrirModalEditarPartido(partido: PartidoConJugadores) {
+    if (!isAdmin) return;
     setPartidoEditando(partido);
   }
 
@@ -862,7 +847,7 @@ export function TorneoDetalleClient() {
     event: FormEvent<HTMLFormElement>
   ) {
     event.preventDefault();
-    if (!partidoEditando) return;
+    if (!isAdmin || !partidoEditando) return;
 
     const formData = new FormData(event.currentTarget);
     const jugador1Id = formData.get("jugador_1_id")?.toString();
@@ -893,6 +878,7 @@ export function TorneoDetalleClient() {
         jugador_1_id: jugador1Id,
         jugador_2_id: jugador2Id,
         fase,
+        ...metadatosDesdeFaseEspejo(fase),
         cancha,
         fecha_programada: fechaHorario,
         ...(cambiaronJugadores
@@ -917,7 +903,7 @@ export function TorneoDetalleClient() {
   }
 
   return (
-    <main className="min-h-screen bg-background px-4 py-8 sm:px-6 lg:px-10">
+    <main className="bg-background px-4 py-8 sm:px-6 lg:px-10">
       <div className="mx-auto max-w-5xl">
         <Link
           href="/torneos"
@@ -1204,14 +1190,22 @@ export function TorneoDetalleClient() {
                   await cargarPartidos();
                   router.refresh();
                 }}
-                onCargarResultado={(partido) => {
-                  const original = partidos.find((p) => p.id === partido.id);
-                  if (original) abrirModalResultado(original);
-                }}
-                onProgramarPartido={(partido) => {
-                  const original = partidos.find((p) => p.id === partido.id);
-                  if (original) setPartidoProgramando(original);
-                }}
+                onCargarResultado={
+                  isAdmin
+                    ? (partido) => {
+                        const original = partidos.find((p) => p.id === partido.id);
+                        if (original) abrirModalResultado(original);
+                      }
+                    : undefined
+                }
+                onProgramarPartido={
+                  isAdmin
+                    ? (partido) => {
+                        const original = partidos.find((p) => p.id === partido.id);
+                        if (original) setPartidoProgramando(original);
+                      }
+                    : undefined
+                }
               />
             ))}
 
@@ -1270,6 +1264,18 @@ export function TorneoDetalleClient() {
                               : "Generar Cuadro desde Clasificación"}
                         </button>
                       )}
+
+                    {hayCuadroEliminatorio(partidosCuadroCategoria) && (
+                      <button
+                        type="button"
+                        onClick={() => setIsModalEditarCuadroOpen(true)}
+                        disabled={partidosPrimeraRondaCuadro.length === 0}
+                        className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border bg-surface px-4 py-2.5 text-sm font-semibold text-foreground/80 transition hover:bg-background hover:text-foreground active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <Pencil size={16} />
+                        Editar Cuadro
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -1338,27 +1344,29 @@ export function TorneoDetalleClient() {
                 </div>
               ) : (
                 <CuadroLlaves
-                  partidos={partidosCuadroCategoria
-                    .map((ronda) =>
-                      partidos.find((partido) => partido.id === ronda.id)
-                    )
-                    .filter((partido): partido is PartidoConJugadores =>
-                      Boolean(partido)
-                    )}
+                  partidos={partidosCuadroCategoria}
                   rondaResaltada={rondaCuadroActiva}
                   isAdmin={isAdmin}
-                  onCargarResultado={(card) => {
-                    const original = partidos.find(
-                      (partido) => partido.id === card.id
-                    );
-                    if (original) abrirModalResultado(original);
-                  }}
-                  onProgramarPartido={(card) => {
-                    const original = partidos.find(
-                      (partido) => partido.id === card.id
-                    );
-                    if (original) setPartidoProgramando(original);
-                  }}
+                  onCargarResultado={
+                    isAdmin
+                      ? (card) => {
+                          const original = partidos.find(
+                            (partido) => partido.id === card.id
+                          );
+                          if (original) abrirModalResultado(original);
+                        }
+                      : undefined
+                  }
+                  onProgramarPartido={
+                    isAdmin
+                      ? (card) => {
+                          const original = partidos.find(
+                            (partido) => partido.id === card.id
+                          );
+                          if (original) setPartidoProgramando(original);
+                        }
+                      : undefined
+                  }
                 />
               )}
             </section>
@@ -1367,8 +1375,26 @@ export function TorneoDetalleClient() {
         )}
       </div>
 
+      {isAdmin && isModalEditarCuadroOpen && fasePrimeraRondaCuadro && (
+        <ModalEditarPrimeraRonda
+          key={`${fasePrimeraRondaCuadro}-${partidosPrimeraRondaCuadro.map((partido) => partido.id).join("-")}`}
+          fase={
+            RONDA_CUADRO_LABELS[fasePrimeraRondaCuadro] ??
+            fasePrimeraRondaCuadro
+          }
+          partidos={partidosPrimeraRondaCuadro}
+          opciones={opcionesCuadroManual}
+          idsRondasPosteriores={idsRondasPosterioresPrimeraRonda}
+          onCerrar={() => setIsModalEditarCuadroOpen(false)}
+          onGuardado={async () => {
+            await cargarPartidos();
+            router.refresh();
+          }}
+        />
+      )}
+
       {/* Modal: Inscribir jugadores (múltiples) */}
-      {isModalInscribirOpen && (
+      {isAdmin && isModalInscribirOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4"
           onClick={cerrarModalInscribir}
@@ -1538,7 +1564,7 @@ export function TorneoDetalleClient() {
         </div>
       )}
 
-      {partidoProgramando && (
+      {isAdmin && partidoProgramando && (
         <ModalProgramarPartido
           partido={partidoProgramando}
           onCerrar={() => setPartidoProgramando(null)}
@@ -1549,166 +1575,16 @@ export function TorneoDetalleClient() {
         />
       )}
 
-      {/* Modal: Cargar Resultado */}
-      {partidoCargandoResultado && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4"
-          onClick={cerrarModalResultado}
-        >
-          <div
-            className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-border bg-surface p-6 shadow-2xl shadow-black/40 sm:p-8"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="mb-2 flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-foreground">
-                {partidoCargandoResultado.estado === "Finalizado"
-                  ? "Editar Resultado"
-                  : "Cargar Resultado"}
-              </h2>
-              <button
-                type="button"
-                onClick={cerrarModalResultado}
-                aria-label="Cerrar"
-                className="text-foreground/50 transition hover:text-foreground"
-              >
-                ✕
-              </button>
-            </div>
-            <p className="mb-6 text-sm text-foreground/60">
-              {partidoCargandoResultado.jugador_1?.nombre_completo ?? "?"} vs{" "}
-              {partidoCargandoResultado.jugador_2?.nombre_completo ?? "?"}
-            </p>
-
-            <form onSubmit={handleGuardarResultado} className="space-y-5">
-              <div className="space-y-2">
-                <p className="block text-sm font-medium text-foreground/80">
-                  Resultado por sets
-                </p>
-
-                <div className="overflow-hidden rounded-xl border border-border">
-                  <div className="grid grid-cols-[1fr_4.5rem_1.5rem_4.5rem] items-center gap-2 bg-background/60 px-3 py-2 text-xs font-medium text-foreground/40">
-                    <span />
-                    <span className="truncate text-center">
-                      {partidoCargandoResultado.jugador_1?.nombre_completo ??
-                        "Jugador 1"}
-                    </span>
-                    <span />
-                    <span className="truncate text-center">
-                      {partidoCargandoResultado.jugador_2?.nombre_completo ??
-                        "Jugador 2"}
-                    </span>
-                  </div>
-
-                  {setsResultado.map((set, index) => (
-                    <div
-                      key={index}
-                      className="grid grid-cols-[1fr_4.5rem_1.5rem_4.5rem] items-center gap-2 border-t border-border px-3 py-2.5"
-                    >
-                      <label
-                        htmlFor={`set-${index}-j1`}
-                        className="text-sm text-foreground/70"
-                      >
-                        {index < 2
-                          ? `Set ${index + 1}`
-                          : "Set 3 / Super TB"}
-                        {index === 2 && (
-                          <span className="ml-1 text-xs text-foreground/30">
-                            (opcional)
-                          </span>
-                        )}
-                      </label>
-                      <input
-                        id={`set-${index}-j1`}
-                        type="number"
-                        min={0}
-                        inputMode="numeric"
-                        value={set.j1}
-                        onChange={(event) =>
-                          handleCambiarSet(index, "j1", event.target.value)
-                        }
-                        className="w-full rounded-lg border border-border bg-background px-2 py-1.5 text-center text-foreground outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/30"
-                      />
-                      <span className="text-center text-xs text-foreground/30">
-                        -
-                      </span>
-                      <input
-                        aria-label={`Set ${index + 1}, games del jugador 2`}
-                        type="number"
-                        min={0}
-                        inputMode="numeric"
-                        value={set.j2}
-                        onChange={(event) =>
-                          handleCambiarSet(index, "j2", event.target.value)
-                        }
-                        className="w-full rounded-lg border border-border bg-background px-2 py-1.5 text-center text-foreground outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/30"
-                      />
-                    </div>
-                  ))}
-                </div>
-
-                <p className="text-xs text-foreground/40">
-                  {resultadoTexto
-                    ? `Se va a guardar como: ${resultadoTexto}`
-                    : "Cargá al menos el Set 1 y el Set 2. El Set 3 es opcional."}
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <p className="block text-sm font-medium text-foreground/80">
-                  Ganador
-                </p>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  {[
-                    partidoCargandoResultado.jugador_1,
-                    partidoCargandoResultado.jugador_2,
-                  ].map(
-                    (jugador) =>
-                      jugador && (
-                        <button
-                          key={jugador.id}
-                          type="button"
-                          onClick={() => setGanadorManualId(jugador.id)}
-                          className={`flex items-center justify-center rounded-lg border px-3 py-2.5 text-sm font-medium transition ${
-                            ganadorId === jugador.id
-                              ? "border-accent bg-accent/15 text-accent"
-                              : "border-border bg-background text-foreground/60 hover:text-foreground"
-                          }`}
-                        >
-                          {jugador.nombre_completo}
-                        </button>
-                      )
-                  )}
-                </div>
-                <p className="text-xs text-foreground/40">
-                  Se calcula solo según los sets ganados. Tocá un jugador
-                  para corregirlo manualmente (ej. retiro a mitad de
-                  partido).
-                </p>
-              </div>
-
-              <div className="flex gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={cerrarModalResultado}
-                  className="flex-1 rounded-lg border border-border px-4 py-2.5 text-sm font-semibold text-foreground/80 transition hover:bg-background"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={!puedeGuardarResultado}
-                  className="flex-1 rounded-lg bg-[#ea580c] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#c2410c] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Guardar resultado
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+      {isAdmin && partidoCargandoResultado && (
+        <ModalCargarResultado
+          partido={partidoCargandoResultado}
+          onCerrar={cerrarModalResultado}
+          onGuardar={handleGuardarResultado}
+        />
       )}
 
       {/* Modal: Editar Cruce (cambiar jugador 1 y/o jugador 2 de un partido) */}
-      {partidoEditando && (
+      {isAdmin && partidoEditando && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4"
           onClick={cerrarModalEditarPartido}

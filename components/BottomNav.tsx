@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Award, Home, Trophy, Users, type LucideIcon } from "lucide-react";
+import { Award, Home, Trophy, UserRound, Users, type LucideIcon } from "lucide-react";
 
 interface NavLink {
   href: string;
@@ -15,6 +15,7 @@ const NAV_LINKS: NavLink[] = [
   { href: "/torneos", label: "Torneos", icon: Trophy },
   { href: "/jugadores", label: "Jugadores", icon: Users },
   { href: "/ranking", label: "Ranking", icon: Award },
+  { href: "/perfil", label: "Perfil", icon: UserRound },
 ];
 
 function esRutaActiva(pathname: string, href: string) {
@@ -25,7 +26,13 @@ function esRutaActiva(pathname: string, href: string) {
 export function BottomNav() {
   const pathname = usePathname();
 
-  if (pathname === "/login") return null;
+  if (
+    pathname === "/login" ||
+    pathname === "/vincular-perfil" ||
+    pathname === "/recuperar-clave"
+  ) {
+    return null;
+  }
 
   return (
     <nav

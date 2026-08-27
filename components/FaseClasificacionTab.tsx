@@ -112,6 +112,7 @@ export function FaseClasificacionTab({
   );
 
   function handleSortear() {
+    if (!isAdmin) return;
     if (inscriptos.length < 2) {
       toast.error("Se necesitan al menos 2 inscriptos en esta categoría.");
       return;
@@ -137,6 +138,7 @@ export function FaseClasificacionTab({
     slot: "jugador_1_id" | "jugador_2_id",
     valor: string
   ) {
+    if (!isAdmin) return;
     setCrucesDraft((previos) =>
       previos.map((cruce) =>
         cruce.id === cruceId ? { ...cruce, [slot]: valor } : cruce
@@ -145,6 +147,7 @@ export function FaseClasificacionTab({
   }
 
   function handleAgregarCruceDraft() {
+    if (!isAdmin) return;
     setCrucesDraft((previos) => [
       ...previos,
       {
@@ -156,10 +159,12 @@ export function FaseClasificacionTab({
   }
 
   function handleEliminarCruceDraft(cruceId: string) {
+    if (!isAdmin) return;
     setCrucesDraft((previos) => previos.filter((cruce) => cruce.id !== cruceId));
   }
 
   async function handleConfirmar() {
+    if (!isAdmin) return;
     if (byeVsBye) {
       toast.error("No se puede confirmar un cruce BYE vs BYE.");
       return;
@@ -342,7 +347,7 @@ export function FaseClasificacionTab({
           </div>
         )}
       </section>
-      {isModalEditarOpen && (
+      {isModalEditarOpen && isAdmin && (
         <ModalEditarClasificacion
           torneoId={torneoId}
           categoria={categoriaTorneo}
@@ -397,7 +402,7 @@ export function FaseClasificacionTab({
           </p>
         )}
       </section>
-      {isModalEditarOpen && (
+      {isModalEditarOpen && isAdmin && (
         <ModalEditarClasificacion
           torneoId={torneoId}
           categoria={categoriaTorneo}

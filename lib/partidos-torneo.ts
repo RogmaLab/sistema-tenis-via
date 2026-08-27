@@ -1,7 +1,12 @@
 import { createClient } from "@/lib/supabase/client";
-import { esFaseDeCuadro } from "@/lib/adaptar-cuadro-torneo";
+import {
+  esPartidoClasificacion,
+  esPartidoEliminatorio,
+  esFaseDeCuadro,
+  ordenarPorNumeroSlot,
+} from "@/lib/adaptar-cuadro-torneo";
 
-export { esFaseDeCuadro };
+export { esFaseDeCuadro, esPartidoClasificacion, esPartidoEliminatorio };
 
 export interface PartidoTorneoRow {
   id: string;
@@ -9,6 +14,9 @@ export interface PartidoTorneoRow {
   estado: string;
   ganador_id: string | null;
   fase: string;
+  tipo_fase: string | null;
+  ronda: string | null;
+  numero_slot: number | null;
   categoria: string | null;
   cancha: string | null;
   fecha_programada: string | null;
@@ -18,7 +26,7 @@ export interface PartidoTorneoRow {
 }
 
 const SELECT_PARTIDOS =
-  "id, resultado, estado, ganador_id, fase, categoria, cancha, fecha_programada, siguiente_partido_id, jugador_1:jugador_1_id ( id, nombre_completo ), jugador_2:jugador_2_id ( id, nombre_completo )";
+  "id, resultado, estado, ganador_id, fase, tipo_fase, ronda, numero_slot, categoria, cancha, fecha_programada, siguiente_partido_id, jugador_1:jugador_1_id ( id, nombre_completo ), jugador_2:jugador_2_id ( id, nombre_completo )";
 
 export function normalizarCategoriaPartido(categoria: string | null | undefined) {
   return (categoria ?? "").trim();
@@ -57,6 +65,7 @@ export async function fetchPartidosTorneo(torneoId: string): Promise<{
     .from("partidos")
     .select(SELECT_PARTIDOS)
     .eq("torneo_id", id)
+    .order("numero_slot", { ascending: true })
     .order("created_at", { ascending: true });
 
   if (error) {
@@ -67,20 +76,32 @@ export async function fetchPartidosTorneo(torneoId: string): Promise<{
   return { data: (data as unknown as PartidoTorneoRow[]) ?? [], error: null };
 }
 
-export function partidosClasificacionDe<T extends { fase: string; categoria?: string | null }>(
-  partidos: T[],
-  categoriaActiva: string
-) {
-  return filtrarPartidosPorCategoria(partidos, categoriaActiva).filter(
-    (partido) => partido.fase === "Clasificacion"
+export function partidosClasificacionDe<
+  T extends {
+    fase: string;
+    tipo_fase?: string | null;
+    categoria?: string | null;
+    numero_slot?: number | null;
+  },
+>(partidos: T[], categoriaActiva: string) {
+  return ordenarPorNumeroSlot(
+    filtrarPartidosPorCategoria(partidos, categoriaActiva).filter((partido) =>
+      esPartidoClasificacion(partido)
+    )
   );
 }
 
-export function partidosCuadroDe<T extends { fase: string; categoria?: string | null }>(
-  partidos: T[],
-  categoriaActiva: string
-) {
-  return filtrarPartidosPorCategoria(partidos, categoriaActiva).filter((partido) =>
-    esFaseDeCuadro(partido.fase)
+export function partidosCuadroDe<
+  T extends {
+    fase: string;
+    tipo_fase?: string | null;
+    categoria?: string | null;
+    numero_slot?: number | null;
+  },
+>(partidos: T[], categoriaActiva: string) {
+  return ordenarPorNumeroSlot(
+    filtrarPartidosPorCategoria(partidos, categoriaActiva).filter((partido) =>
+      esPartidoEliminatorio(partido)
+    )
   );
 }

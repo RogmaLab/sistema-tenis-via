@@ -4,7 +4,7 @@ import { SUPABASE_ANON_KEY, SUPABASE_URL } from "./config";
 import { esAdmin } from "@/lib/auth/es-admin";
 
 // Rutas públicas: accesibles sin sesión.
-const RUTAS_PUBLICAS = ["/login"];
+const RUTAS_PUBLICAS = ["/login", "/auth/callback", "/recuperar-clave"];
 
 // Rutas exclusivas de creación/edición admin.
 // El CRUD actual vive en modales sobre páginas compartidas (lectura OK para

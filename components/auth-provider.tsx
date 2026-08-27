@@ -12,7 +12,7 @@ import {
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 import type { RolUsuario } from "@/lib/auth/types";
-import { fetchIdJugadorVinculado } from "@/lib/jugador-vinculado";
+import { fetchResumenJugadorVinculado } from "@/lib/jugador-vinculado";
 
 interface AuthContextValue {
   user: User | null;
@@ -21,6 +21,7 @@ interface AuthContextValue {
   loading: boolean;
   /** Ficha de `jugadores` vinculada a esta cuenta, o null. */
   jugadorId: string | null;
+  jugadorNombre: string | null;
   refreshPerfil: () => Promise<void>;
 }
 
@@ -45,6 +46,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [rol, setRol] = useState<RolUsuario | null>(null);
   const [jugadorId, setJugadorId] = useState<string | null>(null);
+  const [jugadorNombre, setJugadorNombre] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   const refreshPerfil = useCallback(async () => {
@@ -54,14 +56,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!actual) {
       setRol(null);
       setJugadorId(null);
+      setJugadorNombre(null);
       return;
     }
-    const [rolActual, idJugador] = await Promise.all([
+    const [rolActual, resumen] = await Promise.all([
       fetchRol(supabase, actual.id),
-      fetchIdJugadorVinculado(supabase, actual.id),
+      fetchResumenJugadorVinculado(supabase, actual.id),
     ]);
     setRol(rolActual);
-    setJugadorId(idJugador);
+    setJugadorId(resumen?.id ?? null);
+    setJugadorNombre(resumen?.nombre_completo ?? null);
   }, [supabase]);
 
   useEffect(() => {
@@ -76,15 +80,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!actual) {
           setRol(null);
           setJugadorId(null);
+          setJugadorNombre(null);
           return;
         }
-        const [rolActual, idJugador] = await Promise.all([
+        const [rolActual, resumen] = await Promise.all([
           fetchRol(supabase, actual.id),
-          fetchIdJugadorVinculado(supabase, actual.id),
+          fetchResumenJugadorVinculado(supabase, actual.id),
         ]);
         if (!activo) return;
         setRol(rolActual);
-        setJugadorId(idJugador);
+        setJugadorId(resumen?.id ?? null);
+        setJugadorNombre(resumen?.nombre_completo ?? null);
       } finally {
         if (activo) setLoading(false);
       }
@@ -98,15 +104,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!actual) {
         setRol(null);
         setJugadorId(null);
+        setJugadorNombre(null);
         setLoading(false);
         return;
       }
-      const [rolActual, idJugador] = await Promise.all([
+      const [rolActual, resumen] = await Promise.all([
         fetchRol(supabase, actual.id),
-        fetchIdJugadorVinculado(supabase, actual.id),
+        fetchResumenJugadorVinculado(supabase, actual.id),
       ]);
       setRol(rolActual);
-      setJugadorId(idJugador);
+      setJugadorId(resumen?.id ?? null);
+      setJugadorNombre(resumen?.nombre_completo ?? null);
       setLoading(false);
     });
 
@@ -123,9 +131,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isAdmin: rol === "admin",
       loading,
       jugadorId,
+      jugadorNombre,
       refreshPerfil,
     }),
-    [user, rol, loading, jugadorId, refreshPerfil]
+    [user, rol, loading, jugadorId, jugadorNombre, refreshPerfil]
   );
 
   return (
@@ -143,6 +152,7 @@ export function useAuth() {
 
 /** Alias semántico: mismo contexto, enfocado al perfil/rol. */
 export function usePerfil() {
-  const { user, rol, isAdmin, loading, jugadorId, refreshPerfil } = useAuth();
-  return { user, rol, isAdmin, loading, jugadorId, refreshPerfil };
+  const { user, rol, isAdmin, loading, jugadorId, jugadorNombre, refreshPerfil } =
+    useAuth();
+  return { user, rol, isAdmin, loading, jugadorId, jugadorNombre, refreshPerfil };
 }

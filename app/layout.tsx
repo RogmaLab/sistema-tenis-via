@@ -4,7 +4,7 @@ import "./globals.css";
 import { AuthProvider } from "@/components/auth-provider";
 import { ClaimPerfilGate } from "@/components/ClaimPerfilGate";
 import { CreditoRogmaLab } from "@/components/CreditoRogmaLab";
-import { Navigation } from "@/components/navigation";
+import { PublicNavbar } from "@/components/PublicNavbar";
 import { Toaster } from "@/components/toaster";
 
 const geistSans = Geist({
@@ -18,8 +18,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Tenis La Vía - Panel de Control",
-  description: "Plataforma de gestión de torneos de Tenis La Vía",
+  title: "Tenis La Vía",
+  description:
+    "Cartelera de torneos, ranking, llaves y horarios de Tenis La Vía",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
@@ -28,11 +29,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="es"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full bg-background text-foreground md:flex">
+      <body className="min-h-full bg-background text-foreground">
         <AuthProvider>
-          <Navigation />
-          {/* pb-20: deja aire para el BottomNav en mobile (no tapa CTAs/listas) */}
-          <div className="flex min-h-screen flex-1 flex-col pb-20 md:pb-0">
+          <div className="flex min-h-screen flex-col">
+            <PublicNavbar />
             <div className="flex-1">
               <ClaimPerfilGate>{children}</ClaimPerfilGate>
             </div>

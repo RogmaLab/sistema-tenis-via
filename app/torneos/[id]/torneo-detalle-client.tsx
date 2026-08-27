@@ -39,6 +39,7 @@ import {
   FASES_PARTIDO,
   type EstadoPartido,
   type Jugador,
+  type JugadorRanking,
   type Torneo,
   normalizarFormatoTorneo,
 } from "@/lib/types";
@@ -61,6 +62,8 @@ import {
 } from "@/lib/adaptar-cuadro-torneo";
 import { CuadroLlaves } from "@/components/CuadroLlaves";
 import { FaseClasificacionTab } from "@/components/FaseClasificacionTab";
+import { HorariosTorneo } from "@/components/HorariosTorneo";
+import { RankingCircuito } from "@/components/RankingCircuito";
 import { ModalEditarPrimeraRonda } from "@/components/ModalEditarPrimeraRonda";
 import { ModalCargarResultado } from "@/components/ModalCargarResultado";
 import { RESULTADO_WALKOVER } from "@/lib/motor-ranking";
@@ -105,13 +108,31 @@ function EmptyStateCategoria() {
   );
 }
 
-type PestanaDetalle = "jugadores" | "grupos" | "clasificacion" | "cuadro";
+type PestanaDetalle =
+  | "ranking"
+  | "horarios"
+  | "jugadores"
+  | "grupos"
+  | "clasificacion"
+  | "cuadro";
 
-export function TorneoDetalleClient() {
+interface TorneoDetalleClientProps {
+  torneoId?: string;
+  ocultarVolver?: boolean;
+  pestanaInicial?: PestanaDetalle;
+  ranking?: JugadorRanking[];
+}
+
+export function TorneoDetalleClient({
+  torneoId: torneoIdProp,
+  ocultarVolver = false,
+  pestanaInicial,
+  ranking,
+}: TorneoDetalleClientProps = {}) {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const { isAdmin } = useAuth();
-  const torneoId = params.id;
+  const torneoId = (torneoIdProp ?? params.id ?? "").toString();
   const supabase = createClient();
 
   const [torneo, setTorneo] = useState<Torneo | null>(null);
@@ -140,8 +161,9 @@ export function TorneoDetalleClient() {
     useState<PartidoConJugadores | null>(null);
   const [isModalEditarCuadroOpen, setIsModalEditarCuadroOpen] =
     useState(false);
-  const [pestanaActiva, setPestanaActiva] =
-    useState<PestanaDetalle>("jugadores");
+  const [pestanaActiva, setPestanaActiva] = useState<PestanaDetalle>(
+    pestanaInicial ?? "jugadores"
+  );
   const [categoriaFiltro, setCategoriaFiltro] = useState("Todas");
   const [generoFiltro, setGeneroFiltro] = useState("Todos");
   const [crucesDraft, setCrucesDraft] = useState<CruceDraft[]>([]);
@@ -259,6 +281,10 @@ export function TorneoDetalleClient() {
 
       setPartidos(partidosData ?? []);
       setIsLoadingPartidos(false);
+
+      if (ocultarVolver && torneoData?.categorias?.[0]) {
+        setCategoriaFiltro(torneoData.categorias[0]);
+      }
     });
 
     return () => {
@@ -266,6 +292,7 @@ export function TorneoDetalleClient() {
     };
   }, [
     torneoId,
+    ocultarVolver,
     fetchTorneoDesdeSupabase,
     fetchInscriptosDesdeSupabase,
     fetchTodosLosJugadoresDesdeSupabase,
@@ -353,6 +380,33 @@ export function TorneoDetalleClient() {
     if (categoriaFiltro === "Todas") return [];
     return partidosCuadroDe(partidos, categoriaFiltro);
   }, [partidos, categoriaFiltro]);
+
+  const partidosHorarios = useMemo(() => {
+    const conHorario = partidos.filter((partido) => partido.fecha_programada);
+    const porCategoria =
+      categoriaFiltro === "Todas"
+        ? conHorario
+        : conHorario.filter(
+            (partido) =>
+              (partido.categoria ?? "").trim() === categoriaFiltro
+          );
+    const porGenero =
+      generoFiltro === "Todos"
+        ? porCategoria
+        : porCategoria.filter((partido) => {
+            const id1 = partido.jugador_1?.id;
+            const id2 = partido.jugador_2?.id;
+            return (
+              (id1 && idsJugadoresFiltrados.includes(id1)) ||
+              (id2 && idsJugadoresFiltrados.includes(id2))
+            );
+          });
+    return [...porGenero].sort((a, b) => {
+      const ta = Date.parse(a.fecha_programada ?? "");
+      const tb = Date.parse(b.fecha_programada ?? "");
+      return ta - tb;
+    });
+  }, [partidos, categoriaFiltro, generoFiltro, idsJugadoresFiltrados]);
 
   const planClasificacion = planClasificacionPreliminar(
     inscriptosFiltrados.length
@@ -524,9 +578,12 @@ export function TorneoDetalleClient() {
   const formatoTorneo = normalizarFormatoTorneo(torneo?.formato);
 
   const pestanasVisibles = useMemo(() => {
-    const pestanas: { id: PestanaDetalle; label: string }[] = [
-      { id: "jugadores", label: "Jugadores Inscriptos" },
-    ];
+    const pestanas: { id: PestanaDetalle; label: string }[] = [];
+    if (ranking) {
+      pestanas.push({ id: "ranking", label: "Ranking" });
+    }
+    pestanas.push({ id: "horarios", label: "Horarios" });
+    pestanas.push({ id: "jugadores", label: "Jugadores Inscriptos" });
     if (formatoTorneo === "grupos_eliminatoria") {
       pestanas.push({ id: "grupos", label: "Fase de Grupos" });
     }
@@ -535,7 +592,7 @@ export function TorneoDetalleClient() {
     }
     pestanas.push({ id: "cuadro", label: "Cuadro Eliminatorio" });
     return pestanas;
-  }, [formatoTorneo]);
+  }, [formatoTorneo, ranking]);
 
   const pestanaMostrada = pestanasVisibles.some((p) => p.id === pestanaActiva)
     ? pestanaActiva
@@ -903,15 +960,17 @@ export function TorneoDetalleClient() {
   }
 
   return (
-    <main className="bg-background px-4 py-8 sm:px-6 lg:px-10">
+    <main className={`bg-background px-4 sm:px-6 lg:px-10 ${ocultarVolver ? "pb-8 pt-4" : "py-8"}`}>
       <div className="mx-auto max-w-5xl">
-        <Link
-          href="/torneos"
-          className="mb-6 inline-flex items-center gap-1.5 text-sm font-medium text-foreground/60 transition hover:text-foreground"
-        >
-          <ArrowLeft size={16} />
-          Volver a Torneos
-        </Link>
+        {!ocultarVolver ? (
+          <Link
+            href="/torneos"
+            className="mb-6 inline-flex items-center gap-1.5 text-sm font-medium text-foreground/60 transition hover:text-foreground"
+          >
+            <ArrowLeft size={16} />
+            Volver a Torneos
+          </Link>
+        ) : null}
 
         {isLoadingTorneo ? (
           <p className="rounded-2xl border border-border bg-surface px-6 py-10 text-center text-sm text-foreground/50">
@@ -968,7 +1027,7 @@ export function TorneoDetalleClient() {
               </div>
             </header>
 
-            {/* Barra de control: género + categoría mandan toda la vista */}
+            {pestanaMostrada !== "ranking" ? (
             <div className="mb-6 space-y-3 rounded-lg bg-[#1a1a1a] p-4">
               <div className="inline-flex rounded-lg bg-background p-1">
                 {["Todos", "Masculino", "Femenino"].map((genero) => {
@@ -1010,6 +1069,7 @@ export function TorneoDetalleClient() {
                 })}
               </div>
             </div>
+            ) : null}
 
             {/* Navegación por pestañas */}
             <nav
@@ -1034,6 +1094,17 @@ export function TorneoDetalleClient() {
                 );
               })}
             </nav>
+
+            {pestanaMostrada === "ranking" && ranking ? (
+              <RankingCircuito ranking={ranking} compacto />
+            ) : null}
+
+            {pestanaMostrada === "horarios" ? (
+              <HorariosTorneo
+                partidos={partidosHorarios}
+                isLoading={isLoadingPartidos}
+              />
+            ) : null}
 
             {/* Pestaña: Jugadores Inscriptos */}
             {pestanaMostrada === "jugadores" && (

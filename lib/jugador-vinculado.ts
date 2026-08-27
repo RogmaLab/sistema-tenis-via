@@ -1,13 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Jugador } from "@/lib/types";
 
-export async function fetchIdJugadorVinculado(
+export async function fetchResumenJugadorVinculado(
   supabase: SupabaseClient,
   userId: string
-): Promise<string | null> {
+): Promise<{ id: string; nombre_completo: string } | null> {
   const { data, error } = await supabase
     .from("jugadores")
-    .select("id")
+    .select("id, nombre_completo")
     .eq("user_id", userId)
     .maybeSingle();
 
@@ -15,7 +15,16 @@ export async function fetchIdJugadorVinculado(
     console.error("Error al buscar jugador vinculado:", error.message);
     return null;
   }
-  return data?.id ?? null;
+  if (!data) return null;
+  return { id: data.id, nombre_completo: data.nombre_completo };
+}
+
+export async function fetchIdJugadorVinculado(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<string | null> {
+  const resumen = await fetchResumenJugadorVinculado(supabase, userId);
+  return resumen?.id ?? null;
 }
 
 export async function fetchMiJugador(

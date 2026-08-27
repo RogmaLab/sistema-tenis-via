@@ -277,4 +277,4 @@ where tipo_fase = 'eliminatoria';
 comment on view public.partidos_cuadro_eliminatorio is
   'Solo partidos del cuadro. Nunca incluye fase Clasificacion.';
 
-grant select on public.partidos_cuadro_eliminatorio to anon, authenticated;
+grant select on public.partidos_cuadro_eliminatorio to authenticated;

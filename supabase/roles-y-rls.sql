@@ -91,7 +91,7 @@ create policy "perfiles_update_solo_admin"
 
 -- -----------------------------------------------------------------------------
 -- 5) Candado de titanio: torneos / partidos / jugadores
---    SELECT: cualquiera (anon o authenticated)
+--    SELECT: solo usuarios autenticados
 --    INSERT: admin, o el usuario creando SU ficha (user_id = auth.uid())
 --    UPDATE: admin, o el dueño de la ficha (user_id = auth.uid())
 --    DELETE: solo admin
@@ -102,9 +102,11 @@ create policy "perfiles_update_solo_admin"
 alter table public.torneos enable row level security;
 
 drop policy if exists "torneos_select_publico" on public.torneos;
-create policy "torneos_select_publico"
+drop policy if exists "torneos_select_autenticado" on public.torneos;
+create policy "torneos_select_autenticado"
   on public.torneos
   for select
+  to authenticated
   using (true);
 
 drop policy if exists "torneos_insert_admin" on public.torneos;
@@ -133,9 +135,11 @@ create policy "torneos_delete_admin"
 alter table public.partidos enable row level security;
 
 drop policy if exists "partidos_select_publico" on public.partidos;
-create policy "partidos_select_publico"
+drop policy if exists "partidos_select_autenticado" on public.partidos;
+create policy "partidos_select_autenticado"
   on public.partidos
   for select
+  to authenticated
   using (true);
 
 drop policy if exists "partidos_insert_admin" on public.partidos;
@@ -174,9 +178,11 @@ create unique index if not exists jugadores_user_id_unico
   where user_id is not null;
 
 drop policy if exists "jugadores_select_publico" on public.jugadores;
-create policy "jugadores_select_publico"
+drop policy if exists "jugadores_select_autenticado" on public.jugadores;
+create policy "jugadores_select_autenticado"
   on public.jugadores
   for select
+  to authenticated
   using (true);
 
 drop policy if exists "jugadores_insert_admin" on public.jugadores;
@@ -252,9 +258,11 @@ grant execute on function public.vincular_mi_jugador(uuid) to authenticated;
 alter table public.torneo_jugadores enable row level security;
 
 drop policy if exists "torneo_jugadores_select_publico" on public.torneo_jugadores;
-create policy "torneo_jugadores_select_publico"
+drop policy if exists "torneo_jugadores_select_autenticado" on public.torneo_jugadores;
+create policy "torneo_jugadores_select_autenticado"
   on public.torneo_jugadores
   for select
+  to authenticated
   using (true);
 
 drop policy if exists "torneo_jugadores_insert_admin" on public.torneo_jugadores;
@@ -283,16 +291,16 @@ create policy "torneo_jugadores_delete_admin"
 -- 8) Privileges de escritura: anon no muta. authenticated escribe solo
 --    si pasa RLS (es_admin()).
 -- -----------------------------------------------------------------------------
-revoke insert, update, delete on public.torneos from anon;
-revoke insert, update, delete on public.partidos from anon;
-revoke insert, update, delete on public.jugadores from anon;
-revoke insert, update, delete on public.torneo_jugadores from anon;
-revoke insert, update, delete on public.perfiles from anon;
+revoke select, insert, update, delete on public.torneos from anon;
+revoke select, insert, update, delete on public.partidos from anon;
+revoke select, insert, update, delete on public.jugadores from anon;
+revoke select, insert, update, delete on public.torneo_jugadores from anon;
+revoke select, insert, update, delete on public.perfiles from anon;
 
-grant select on public.torneos to anon, authenticated;
-grant select on public.partidos to anon, authenticated;
-grant select on public.jugadores to anon, authenticated;
-grant select on public.torneo_jugadores to anon, authenticated;
+grant select on public.torneos to authenticated;
+grant select on public.partidos to authenticated;
+grant select on public.jugadores to authenticated;
+grant select on public.torneo_jugadores to authenticated;
 
 grant insert, update, delete on public.torneos to authenticated;
 grant insert, update, delete on public.partidos to authenticated;
@@ -325,7 +333,7 @@ from public.jugadores;
 comment on view public.jugadores_listado is
   'Listado de jugadores. whatsapp solo para admin o el dueño de la ficha.';
 
-grant select on public.jugadores_listado to anon, authenticated;
+grant select on public.jugadores_listado to authenticated;
 
 -- -----------------------------------------------------------------------------
 -- 9) Promover tu primer admin (reemplazá el email)

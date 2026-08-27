@@ -1,7 +1,6 @@
 "use client";
 
 import Image from "next/image";
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState, type FormEvent } from "react";
 import { LogIn, UserPlus } from "lucide-react";
@@ -174,7 +173,7 @@ export function LoginPortal() {
       ? "Registrate para ver torneos, ranking y tu perfil de jugador."
       : modo === "recuperar"
         ? "Escribí tu email y te mandamos el link de recuperación."
-      : "Entrá para vincular tu perfil y seguir tu recorrido.";
+        : "Jugadores y organizadores, el mismo acceso.";
 
   return (
     <div className="w-full max-w-sm rounded-2xl border border-border bg-surface p-6 shadow-2xl shadow-black/40 sm:p-8">
@@ -391,13 +390,6 @@ export function LoginPortal() {
           </button>
         </form>
       ) : null}
-
-      <Link
-        href="/"
-        className="mt-6 flex min-h-11 items-center justify-center text-sm font-medium text-foreground/55 transition hover:text-foreground"
-      >
-        ← Volver al torneo
-      </Link>
     </div>
   );
 }

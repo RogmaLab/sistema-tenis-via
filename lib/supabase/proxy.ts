@@ -3,19 +3,18 @@ import { NextResponse, type NextRequest } from "next/server";
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "./config";
 import { esAdmin } from "@/lib/auth/es-admin";
 
-// Cartelera, ranking, torneos y login son públicos.
-// Solo el perfil (y la vinculación de ficha) exigen sesión.
-const RUTAS_PRIVADAS = ["/perfil", "/vincular-perfil"];
+// Únicas rutas sin sesión. No incluir "/" acá: `startsWith("/")` abriría todo.
+const RUTAS_PUBLICAS = ["/login", "/auth/callback", "/recuperar-clave"];
 
 // Rutas exclusivas de creación/edición admin.
 // El CRUD actual vive en modales sobre páginas compartidas (lectura OK para
-// jugadores); RLS bloquea writes. Reservamos paths dedicados acá.
+// jugadores autenticados); RLS bloquea writes. Reservamos paths dedicados acá.
 const RUTAS_SOLO_ADMIN: string[] = [
   // Ejemplos futuros: "/admin", "/torneos/nuevo", "/jugadores/nuevo"
 ];
 
-function esRutaPrivada(pathname: string) {
-  return RUTAS_PRIVADAS.some(
+function esRutaPublica(pathname: string) {
+  return RUTAS_PUBLICAS.some(
     (ruta) => pathname === ruta || pathname.startsWith(`${ruta}/`)
   );
 }
@@ -54,8 +53,9 @@ export async function actualizarSesion(request: NextRequest) {
   const usuario = data.user;
 
   const { pathname } = request.nextUrl;
+  const esPublica = esRutaPublica(pathname);
 
-  if (!usuario && esRutaPrivada(pathname)) {
+  if (!usuario && !esPublica) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.searchParams.set("redirect_to", pathname);
@@ -74,7 +74,7 @@ export async function actualizarSesion(request: NextRequest) {
   if (esRutaSoloAdmin(pathname)) {
     if (!usuario) {
       const url = request.nextUrl.clone();
-      url.pathname = "/";
+      url.pathname = "/login";
       return NextResponse.redirect(url);
     }
 

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Award, CalendarClock, Home, Trophy, UserRound, Users, type LucideIcon } from "lucide-react";
+import { Award, Calendar, CalendarClock, Home, Trophy, UserRound, Users, type LucideIcon } from "lucide-react";
 
 interface NavLink {
   href: string;
@@ -17,6 +17,7 @@ const NAV_LINKS: NavLink[] = [
   { href: "/jugadores", label: "Comunidad", icon: Users },
   { href: "/ranking", label: "Ranking", icon: Award },
   { href: "/perfil", label: "Perfil", icon: UserRound },
+  { href: "/disponibilidad", label: "Disponibilidad", icon: Calendar },
 ];
 
 function esRutaActiva(pathname: string, href: string) {

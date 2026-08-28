@@ -163,9 +163,24 @@ export function parsearSetsResultado(resultado: string | null | undefined) {
 }
 
 /**
+ * Detecta si un set es un Super Tie-Break.
+ * Un Super Tie-Break típicamente se juega a 10 puntos (con ventaja de 2),
+ * por lo que uno de los jugadores tendrá 10+ puntos.
+ */
+export function esSuperTieBreak(set: { j1: number; j2: number }): boolean {
+  const max = Math.max(set.j1, set.j2);
+  const min = Math.min(set.j1, set.j2);
+  
+  // Super Tie-Break: el ganador tiene 10+ puntos
+  // Ejemplos: 10-3, 10-8, 11-9, 12-10, etc.
+  return max >= 10 && min < max;
+}
+
+/**
  * Games ganados menos games perdidos.
  * Solo partidos jugados entre dos personas con marcador de sets.
  * BYE y W.O. no aportan games.
+ * Los Super Tie-Breaks se cuentan como 1-0 para evitar distorsionar el diferencial.
  */
 export function diferenciaGamesCircuito(partidos: PartidoParaRanking[]) {
   const diferencia = new Map<string, number>();
@@ -182,8 +197,18 @@ export function diferenciaGamesCircuito(partidos: PartidoParaRanking[]) {
     let gamesJ1 = 0;
     let gamesJ2 = 0;
     for (const set of sets) {
-      gamesJ1 += set.j1;
-      gamesJ2 += set.j2;
+      if (esSuperTieBreak(set)) {
+        // Super Tie-Break: cuenta como 1 game para el ganador, 0 para el perdedor
+        if (set.j1 > set.j2) {
+          gamesJ1 += 1;
+        } else {
+          gamesJ2 += 1;
+        }
+      } else {
+        // Set normal: suma los games reales
+        gamesJ1 += set.j1;
+        gamesJ2 += set.j2;
+      }
     }
 
     sumar(partido.jugador_1_id, gamesJ1 - gamesJ2);

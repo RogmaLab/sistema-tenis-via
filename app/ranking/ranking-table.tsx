@@ -9,6 +9,7 @@ import {
   type Genero,
   type JugadorRanking,
 } from "@/lib/types";
+import { FiltrosCategorias } from "@/components/FiltrosCategorias";
 
 type FiltroCategoria = CategoriaJugador | "todas";
 type FiltroGenero = Genero | "todos";
@@ -52,10 +53,46 @@ export function RankingTable({ ranking }: RankingTableProps) {
     });
   }, [ranking, filtroCategoria, filtroGenero]);
 
+  // Calcular conteos por categoría (considerando filtro de género)
+  const conteosPorCategoria = useMemo(() => {
+    const conteos: Record<FiltroCategoria, number> = {
+      todas: 0,
+      "3ra": 0,
+      "4ta": 0,
+      "5ta": 0,
+      Damas: 0,
+    };
+
+    ranking.forEach((jugador) => {
+      const coincideGenero =
+        filtroGenero === "todos" || jugador.genero === filtroGenero;
+      
+      if (coincideGenero) {
+        conteos.todas++;
+        conteos[jugador.categoria]++;
+      }
+    });
+
+    return conteos;
+  }, [ranking, filtroGenero]);
+
   return (
     <>
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row">
-        <div className="flex-1 space-y-1.5">
+      <div className="mb-5 space-y-4">
+        {/* Filtros de categoría (Pills) */}
+        <div>
+          <label className="mb-2 block text-sm font-medium text-foreground/80">
+            Categoría
+          </label>
+          <FiltrosCategorias
+            categoriaActiva={filtroCategoria}
+            onCambiarCategoria={setFiltroCategoria}
+            conteos={conteosPorCategoria}
+          />
+        </div>
+
+        {/* Filtro de género (dropdown) */}
+        <div className="space-y-1.5">
           <label
             htmlFor="filtro_genero_ranking"
             className="block text-sm font-medium text-foreground/80"
@@ -68,36 +105,12 @@ export function RankingTable({ ranking }: RankingTableProps) {
             onChange={(event) =>
               setFiltroGenero(event.target.value as FiltroGenero)
             }
-            className="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-foreground outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/30"
+            className="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-foreground outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/30 sm:max-w-xs"
           >
             <option value="todos">Todos los géneros</option>
             {GENEROS.map((genero) => (
               <option key={genero} value={genero}>
                 {genero}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="flex-1 space-y-1.5">
-          <label
-            htmlFor="filtro_categoria_ranking"
-            className="block text-sm font-medium text-foreground/80"
-          >
-            Categoría
-          </label>
-          <select
-            id="filtro_categoria_ranking"
-            value={filtroCategoria}
-            onChange={(event) =>
-              setFiltroCategoria(event.target.value as FiltroCategoria)
-            }
-            className="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-sm text-foreground outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/30"
-          >
-            <option value="todas">Todas las categorías</option>
-            {CATEGORIAS_JUGADOR.map((categoria) => (
-              <option key={categoria} value={categoria}>
-                {categoria}
               </option>
             ))}
           </select>

@@ -11,7 +11,7 @@ import Link from "next/link";
 import { CalendarClock, MapPin, Pencil, Plus, Trophy, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/components/auth-provider";
-import { CATEGORIAS_JUGADOR, type TorneoFuturo } from "@/lib/types";
+import { CATEGORIAS_JUGADOR, type CategoriaJugador, type TorneoFuturo } from "@/lib/types";
 import { formatFecha, formatFechaHorario } from "@/lib/datetime";
 import {
   eliminarTorneoFuturo,
@@ -22,6 +22,8 @@ import {
   nombreEnAgenda,
   type ProximoPartido,
 } from "@/lib/lo-que-viene";
+import { FiltrosCategorias } from "@/components/FiltrosCategorias";
+import { BadgeEnCancha, estaEnCancha } from "@/components/BadgeEnCancha";
 
 type Pestana = "partidos" | "torneos";
 
@@ -37,6 +39,7 @@ function ymdLocal(iso: string) {
 export function LoQueVieneClient() {
   const { isAdmin } = useAuth();
   const [pestana, setPestana] = useState<Pestana>("partidos");
+  const [filtroCategoria, setFiltroCategoria] = useState<CategoriaJugador | "todas">("todas");
   const [partidos, setPartidos] = useState<ProximoPartido[]>([]);
   const [torneos, setTorneos] = useState<TorneoFuturo[]>([]);
   const [cargandoPartidos, setCargandoPartidos] = useState(true);
@@ -79,10 +82,35 @@ export function LoQueVieneClient() {
     void cargarTorneos();
   }, [cargarPartidos, cargarTorneos]);
 
+  // Filtrar partidos por categoría
+  const partidosFiltrados = useMemo(() => {
+    if (filtroCategoria === "todas") return partidos;
+    return partidos.filter((partido) => partido.categoria === filtroCategoria);
+  }, [partidos, filtroCategoria]);
+
+  // Calcular conteos por categoría
+  const conteosPorCategoria = useMemo(() => {
+    const conteos: Record<CategoriaJugador | "todas", number> = {
+      todas: partidos.length,
+      "3ra": 0,
+      "4ta": 0,
+      "5ta": 0,
+      Damas: 0,
+    };
+
+    partidos.forEach((partido) => {
+      if (partido.categoria) {
+        conteos[partido.categoria]++;
+      }
+    });
+
+    return conteos;
+  }, [partidos]);
+
   const partidosPorDia = useMemo(() => {
     const grupos: { fecha: string; partidos: ProximoPartido[] }[] = [];
     const indice = new Map<string, number>();
-    for (const partido of partidos) {
+    for (const partido of partidosFiltrados) {
       const clave = ymdLocal(partido.fecha_programada);
       const existente = indice.get(clave);
       if (existente == null) {
@@ -93,7 +121,7 @@ export function LoQueVieneClient() {
       }
     }
     return grupos;
-  }, [partidos]);
+  }, [partidosFiltrados]);
 
   function abrirModalNuevo() {
     if (!isAdmin) return;
@@ -234,35 +262,66 @@ export function LoQueVieneClient() {
             </div>
           ) : (
             <div className="space-y-6">
+              {/* Filtros de categoría */}
+              <div>
+                <FiltrosCategorias
+                  categoriaActiva={filtroCategoria}
+                  onCambiarCategoria={setFiltroCategoria}
+                  conteos={conteosPorCategoria}
+                />
+              </div>
+
+              {/* Mensaje si no hay resultados con el filtro */}
+              {partidosFiltrados.length === 0 ? (
+                <div className="flex min-h-[200px] flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-border bg-surface p-10 text-center">
+                  <CalendarClock size={22} className="text-accent" />
+                  <p className="text-sm text-foreground/60">
+                    No hay partidos programados en la categoría{" "}
+                    <strong>{filtroCategoria}</strong>.
+                  </p>
+                </div>
+              ) : null}
+
+              {/* Partidos agrupados por día */}
               {partidosPorDia.map((grupo) => (
                 <section key={grupo.fecha}>
                   <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-foreground/50">
                     {formatFecha(grupo.fecha)}
                   </h2>
                   <div className="space-y-3">
-                    {grupo.partidos.map((partido) => (
-                      <Link
-                        key={partido.id}
-                        href={
-                          partido.torneo?.id
-                            ? `/torneos/${partido.torneo.id}`
-                            : "/torneos"
-                        }
-                        className="block rounded-2xl border border-border bg-surface p-4 transition hover:border-accent/50 sm:p-5"
-                      >
-                        <div className="flex flex-wrap items-start justify-between gap-2">
-                          <p className="text-sm font-semibold text-foreground">
-                            {nombreEnAgenda(partido.jugador_1)}{" "}
-                            <span className="font-medium text-foreground/40">
-                              vs
-                            </span>{" "}
-                            {nombreEnAgenda(partido.jugador_2)}
-                          </p>
-                          <p className="text-xs font-medium text-foreground/55">
-                            {formatFechaHorario(partido.fecha_programada)}
-                          </p>
-                        </div>
-                        <div className="mt-3 flex flex-wrap gap-2 text-xs font-medium text-foreground/60">
+                    {grupo.partidos.map((partido) => {
+                      const enCancha = estaEnCancha({
+                        fechaProgramada: partido.fecha_programada,
+                        estado: partido.estado,
+                      });
+
+                      return (
+                        <Link
+                          key={partido.id}
+                          href={
+                            partido.torneo?.id
+                              ? `/torneos/${partido.torneo.id}`
+                              : "/torneos"
+                          }
+                          className="block rounded-2xl border border-border bg-surface p-4 transition hover:border-accent/50 sm:p-5"
+                        >
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <p className="text-sm font-semibold text-foreground">
+                              {nombreEnAgenda(partido.jugador_1)}{" "}
+                              <span className="font-medium text-foreground/40">
+                                vs
+                              </span>{" "}
+                              {nombreEnAgenda(partido.jugador_2)}
+                            </p>
+                            <p className="text-xs font-medium text-foreground/55">
+                              {formatFechaHorario(partido.fecha_programada)}
+                            </p>
+                          </div>
+                          <div className="mt-3 flex flex-wrap gap-2 text-xs font-medium text-foreground/60">
+                            {/* Badge EN CANCHA */}
+                            {enCancha ? (
+                              <BadgeEnCancha compacto />
+                            ) : null}
                           {partido.cancha ? (
                             <span className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-1">
                               <MapPin size={12} />
@@ -289,7 +348,8 @@ export function LoQueVieneClient() {
                           </span>
                         </div>
                       </Link>
-                    ))}
+                      );
+                    })}
                   </div>
                 </section>
               ))}

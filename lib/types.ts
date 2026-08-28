@@ -61,6 +61,8 @@ export interface Torneo {
   categorias: string[];
   formato: string;
   estado: EstadoTorneo;
+  precio_inscripcion?: number | null; // Precio de inscripción (0 = gratuito)
+  datos_pago_texto?: string | null; // Alias/CVU, instrucciones de pago
   created_at: string;
 }
 
@@ -95,6 +97,32 @@ export const GENEROS: Genero[] = ["Masculino", "Femenino"];
 // sin un enum/check constraint que garantice los valores en tiempo de
 // compilación. Los arrays CATEGORIAS_JUGADOR/GENEROS siguen siendo la fuente
 // de verdad para poblar los <select> del formulario.
+export type BloqueHorario =
+  | "sabado_manana"    // Sábado 08:00-13:00
+  | "sabado_tarde"     // Sábado 13:00-18:00
+  | "sabado_noche"     // Sábado 18:00-22:00
+  | "domingo_manana"   // Domingo 08:00-13:00
+  | "domingo_tarde"    // Domingo 13:00-18:00
+  | "domingo_noche";   // Domingo 18:00-22:00
+
+export const BLOQUES_HORARIOS: BloqueHorario[] = [
+  "sabado_manana",
+  "sabado_tarde",
+  "sabado_noche",
+  "domingo_manana",
+  "domingo_tarde",
+  "domingo_noche",
+];
+
+export const BLOQUES_HORARIOS_LABELS: Record<BloqueHorario, string> = {
+  sabado_manana: "Sábado Mañana (08:00-13:00)",
+  sabado_tarde: "Sábado Tarde (13:00-18:00)",
+  sabado_noche: "Sábado Noche (18:00-22:00)",
+  domingo_manana: "Domingo Mañana (08:00-13:00)",
+  domingo_tarde: "Domingo Tarde (13:00-18:00)",
+  domingo_noche: "Domingo Noche (18:00-22:00)",
+};
+
 export interface Jugador {
   id: string;
   nombre_completo: string;
@@ -103,6 +131,8 @@ export interface Jugador {
   genero: string;
   /** Cuenta de auth vinculada. null = ficha todavía no reclamada. */
   user_id?: string | null;
+  /** Bloques horarios en los que el jugador puede jugar */
+  disponibilidad_horaria?: BloqueHorario[];
 }
 
 // Jugador con los puntos de ranking ya calculados a partir del historial

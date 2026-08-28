@@ -154,6 +154,10 @@ export function TorneosClient() {
     const formato = normalizarFormatoTorneo(
       formData.get("formato")?.toString()
     );
+    const precioInscripcion = parseFloat(
+      formData.get("precio_inscripcion")?.toString() ?? "0"
+    );
+    const datosPagoTexto = formData.get("datos_pago_texto")?.toString().trim() || null;
 
     if (!nombre || !fechaInicio) return;
     if (categorias.length === 0) return;
@@ -168,6 +172,8 @@ export function TorneosClient() {
           fecha_cierre_inscripcion: fechaCierreInscripcion,
           categorias,
           formato,
+          precio_inscripcion: precioInscripcion,
+          datos_pago_texto: datosPagoTexto,
         })
         .eq("id", torneoEditando.id);
 
@@ -186,6 +192,8 @@ export function TorneosClient() {
         fecha_cierre_inscripcion: fechaCierreInscripcion,
         categorias,
         formato,
+        precio_inscripcion: precioInscripcion,
+        datos_pago_texto: datosPagoTexto,
         // Un torneo recién creado siempre arranca abriendo la inscripción.
         estado: "inscripcion",
       });
@@ -606,6 +614,49 @@ export function TorneosClient() {
                   <p className="text-xs text-foreground/40">
                     Define las pestañas y fases que se van a mostrar en el
                     detalle del torneo.
+                  </p>
+                </div>
+
+                {/* Campos de inscripción con pago */}
+                <div className="space-y-1.5">
+                  <label
+                    htmlFor="precio_inscripcion"
+                    className="block text-sm font-medium text-foreground/80"
+                  >
+                    Precio de Inscripción
+                  </label>
+                  <input
+                    type="number"
+                    id="precio_inscripcion"
+                    name="precio_inscripcion"
+                    min="0"
+                    step="0.01"
+                    placeholder="0.00 (gratuito)"
+                    defaultValue={torneoEditando?.precio_inscripcion ?? 0}
+                    className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-foreground outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/30"
+                  />
+                  <p className="text-xs text-foreground/40">
+                    Dejá en 0 si el torneo es gratuito. Los jugadores verán este precio al inscribirse.
+                  </p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label
+                    htmlFor="datos_pago_texto"
+                    className="block text-sm font-medium text-foreground/80"
+                  >
+                    Datos de Pago (Alias/CVU/Instrucciones)
+                  </label>
+                  <textarea
+                    id="datos_pago_texto"
+                    name="datos_pago_texto"
+                    rows={4}
+                    placeholder="Alias: CLUB.TENIS&#10;CVU: 0000003100012345678901&#10;Mercado Pago: 11-2345-6789"
+                    defaultValue={torneoEditando?.datos_pago_texto ?? ""}
+                    className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-foreground outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/30"
+                  />
+                  <p className="text-xs text-foreground/40">
+                    Esta información se mostrará a los jugadores al inscribirse. Incluí alias, CVU o datos de Mercado Pago.
                   </p>
                 </div>
               </div>

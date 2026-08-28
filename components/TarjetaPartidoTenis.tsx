@@ -2,6 +2,7 @@
 
 import { Calendar, Check, Pencil } from "lucide-react";
 import { formatProgramacionPartido } from "@/lib/datetime";
+import { BadgeEnCancha, estaEnCancha } from "@/components/BadgeEnCancha";
 
 export interface DatosPartidoTarjeta {
   id: string;
@@ -59,22 +60,34 @@ function parsearSets(resultado: string | null) {
 function BadgeProgramacion({
   fecha,
   cancha,
+  estado,
 }: {
   fecha: string | null;
   cancha: string | null;
+  estado: string;
 }) {
-  if (!fecha && !cancha) return null;
+  const enCancha = estaEnCancha({ fechaProgramada: fecha, estado });
+
+  if (!fecha && !cancha && !enCancha) return null;
+  
   return (
-    <div className="border-b border-border/70 bg-background/50 px-2.5 py-1.5 text-[10px] font-medium leading-snug text-foreground/75">
-      {fecha ? (
-        <span>
-          🗓️ {formatProgramacionPartido(fecha)}
-        </span>
+    <div className="flex items-center justify-between gap-2 border-b border-border/70 bg-background/50 px-2.5 py-1.5 text-[10px] font-medium leading-snug text-foreground/75">
+      <div className="flex flex-wrap items-center gap-1">
+        {fecha ? (
+          <span>
+            🗓️ {formatProgramacionPartido(fecha)}
+          </span>
+        ) : null}
+        {fecha && cancha ? (
+          <span className="mx-0.5 text-foreground/25">|</span>
+        ) : null}
+        {cancha ? <span>📍 {cancha}</span> : null}
+      </div>
+      
+      {/* Badge EN CANCHA */}
+      {enCancha ? (
+        <BadgeEnCancha compacto />
       ) : null}
-      {fecha && cancha ? (
-        <span className="mx-1.5 text-foreground/25">|</span>
-      ) : null}
-      {cancha ? <span>📍 {cancha}</span> : null}
     </div>
   );
 }
@@ -82,6 +95,7 @@ function BadgeProgramacion({
 function FilaScoreboard({
   nombre,
   games,
+  gamesRival,
   esGanador,
   esPerdedor,
   finalizado,
@@ -91,6 +105,7 @@ function FilaScoreboard({
 }: {
   nombre: string;
   games: string[] | null;
+  gamesRival: string[] | null;
   esGanador: boolean;
   esPerdedor: boolean;
   finalizado: boolean;
@@ -134,20 +149,27 @@ function FilaScoreboard({
       <div className="flex shrink-0 items-center justify-end">
         {games && games.length > 0 ? (
           <span className="flex items-center gap-1.5 tabular-nums">
-            {games.map((game, i) => (
-              <span
-                key={`${game}-${i}`}
-                className={`min-w-[1.1rem] text-right text-[11px] font-semibold leading-none sm:text-xs ${
-                  finalizado && esGanador
-                    ? "text-white"
-                    : finalizado && esPerdedor
-                      ? "text-foreground/30"
-                      : "text-foreground/55"
-                }`}
-              >
-                {game}
-              </span>
-            ))}
+            {games.map((game, i) => {
+              const gameNum = Number(game);
+              const rivalGameNum = gamesRival?.[i] ? Number(gamesRival[i]) : 0;
+              const ganoEsteSet = gameNum > rivalGameNum;
+              const perdioEsteSet = gameNum < rivalGameNum;
+              
+              return (
+                <span
+                  key={`${game}-${i}`}
+                  className={`min-w-[1.1rem] text-right text-[11px] font-semibold leading-none sm:text-xs ${
+                    finalizado && ganoEsteSet
+                      ? "text-white"
+                      : finalizado && perdioEsteSet
+                        ? "text-foreground/30"
+                        : "text-foreground/55"
+                  }`}
+                >
+                  {game}
+                </span>
+              );
+            })}
           </span>
         ) : null}
         {esWO && esGanador ? (
@@ -213,6 +235,7 @@ export function TarjetaPartidoTenis({
         <BadgeProgramacion
           fecha={partido.fecha_programada}
           cancha={partido.cancha}
+          estado={partido.estado}
         />
 
         {(etiqueta || (pendiente || finalizado)) && etiqueta ? (
@@ -235,6 +258,7 @@ export function TarjetaPartidoTenis({
         <FilaScoreboard
           nombre={j1Nombre}
           games={sets?.j1 ?? null}
+          gamesRival={sets?.j2 ?? null}
           esGanador={j1Gana}
           esPerdedor={j1Pierde}
           finalizado={finalizado}
@@ -246,6 +270,7 @@ export function TarjetaPartidoTenis({
         <FilaScoreboard
           nombre={j2Nombre}
           games={sets?.j2 ?? null}
+          gamesRival={sets?.j1 ?? null}
           esGanador={j2Gana}
           esPerdedor={j2Pierde}
           finalizado={finalizado}

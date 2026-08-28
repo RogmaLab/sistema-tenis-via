@@ -98,8 +98,15 @@ export async function ejecutarAutoAsignacion(params: {
 }): Promise<{
   asignados: number;
   sinSlot: number;
+  sinDisponibilidad: number;
   omitidos: number;
   bloques: number;
+  partidosSinDisponibilidad: Array<{
+    id: string;
+    jugador_1: string | null;
+    jugador_2: string | null;
+    fase: string;
+  }>;
 }> {
   const supabase = createClient();
   const config = await fetchConfigProgramacion(params.torneoId);
@@ -112,13 +119,31 @@ export async function ejecutarAutoAsignacion(params: {
   const { data: partidosData, error } = await supabase
     .from("partidos")
     .select(
-      "id, estado, tipo_fase, fase, ronda, numero_slot, categoria, jugador_1_id, jugador_2_id, fecha_programada, cancha"
+      `id, estado, tipo_fase, fase, ronda, numero_slot, categoria, 
+       jugador_1_id, jugador_2_id, fecha_programada, cancha,
+       jugador_1:jugador_1_id(disponibilidad_horaria),
+       jugador_2:jugador_2_id(disponibilidad_horaria)`
     )
     .eq("torneo_id", params.torneoId);
 
   if (error) throw new Error(error.message);
 
-  const partidos = (partidosData ?? []) as PartidoParaAsignar[];
+  const partidos = (partidosData ?? []).map((p: any) => ({
+    id: p.id,
+    estado: p.estado,
+    tipo_fase: p.tipo_fase,
+    fase: p.fase,
+    ronda: p.ronda,
+    numero_slot: p.numero_slot,
+    categoria: p.categoria,
+    jugador_1_id: p.jugador_1_id,
+    jugador_2_id: p.jugador_2_id,
+    fecha_programada: p.fecha_programada,
+    cancha: p.cancha,
+    jugador_1_disponibilidad: p.jugador_1?.disponibilidad_horaria ?? [],
+    jugador_2_disponibilidad: p.jugador_2?.disponibilidad_horaria ?? [],
+  })) as PartidoParaAsignar[];
+
   const duracionMs = config.duracion_minutos * 60 * 1000;
   const reasignar = params.reasignarProgramados === true;
   const ocupaciones: OcupacionExistente[] = [];
@@ -169,10 +194,31 @@ export async function ejecutarAutoAsignacion(params: {
   const errorEscritura = escrituras.find((item) => item.error)?.error;
   if (errorEscritura) throw new Error(errorEscritura.message);
 
+  const { data: jugadoresData } = await supabase
+    .from("jugadores")
+    .select("id, nombre_completo")
+    .in(
+      "id",
+      resultado.sinDisponibilidad.flatMap((p) => [p.jugador_1_id, p.jugador_2_id])
+    );
+
+  const jugadoresMap = new Map(
+    (jugadoresData ?? []).map((j: any) => [j.id, j.nombre_completo])
+  );
+
+  const partidosSinDisponibilidad = resultado.sinDisponibilidad.map((p) => ({
+    id: p.id,
+    jugador_1: jugadoresMap.get(p.jugador_1_id!) ?? null,
+    jugador_2: jugadoresMap.get(p.jugador_2_id!) ?? null,
+    fase: p.fase,
+  }));
+
   return {
     asignados: resultado.asignaciones.length,
     sinSlot: resultado.sinSlot.length,
+    sinDisponibilidad: resultado.sinDisponibilidad.length,
     omitidos: resultado.omitidos,
     bloques: bloques.length,
+    partidosSinDisponibilidad,
   };
 }

@@ -1,12 +1,16 @@
 import { fromDateAndTimeValues, snapHoraAMediaHora } from "@/lib/datetime";
 import { esJugadorHumano } from "@/lib/motor-ranking";
 import type { DiaFinDeSemana, VentanaCancha } from "@/lib/disponibilidad-canchas";
+import type { BloqueHorario as BloqueHorarioJugador } from "@/lib/types";
+import { tienenDisponibilidadComun } from "@/lib/disponibilidad-jugadores";
 
-export interface BloqueHorario {
+export interface BloqueHorarioCancha {
   cancha: string;
   inicioMs: number;
   finMs: number;
   fecha_programada: string;
+  dia: DiaFinDeSemana;
+  hora: string; // "HH:MM"
 }
 
 export interface PartidoParaAsignar {
@@ -21,6 +25,8 @@ export interface PartidoParaAsignar {
   jugador_2_id: string | null;
   fecha_programada: string | null;
   cancha: string | null;
+  jugador_1_disponibilidad?: BloqueHorarioJugador[];
+  jugador_2_disponibilidad?: BloqueHorarioJugador[];
 }
 
 export interface OcupacionExistente {
@@ -104,9 +110,9 @@ export function generarBloquesHorarios(params: {
   fechas: Record<DiaFinDeSemana, string>;
   duracionMinutos: number;
   ahora?: Date;
-}): BloqueHorario[] {
+}): BloqueHorarioCancha[] {
   const ahora = params.ahora ?? new Date();
-  const bloques: BloqueHorario[] = [];
+  const bloques: BloqueHorarioCancha[] = [];
 
   for (const ventana of params.ventanas) {
     const fecha = params.fechas[ventana.dia];
@@ -132,6 +138,8 @@ export function generarBloquesHorarios(params: {
           inicioMs: inicio.getTime(),
           finMs: finBloque.getTime(),
           fecha_programada: fechaProgramada,
+          dia: ventana.dia,
+          hora,
         });
       }
       cursor += params.duracionMinutos;
@@ -154,7 +162,7 @@ function seSolapan(
 }
 
 function bloqueLibre(
-  bloque: BloqueHorario,
+  bloque: BloqueHorarioCancha,
   ocupaciones: OcupacionExistente[],
   jugadorIds: string[]
 ) {
@@ -166,20 +174,34 @@ function bloqueLibre(
   return true;
 }
 
+function partidoTieneDisponibilidadEnBloque(
+  partido: PartidoParaAsignar,
+  bloque: BloqueHorarioCancha
+): boolean {
+  return tienenDisponibilidadComun(
+    partido.jugador_1_disponibilidad,
+    partido.jugador_2_disponibilidad,
+    bloque.dia,
+    bloque.hora
+  );
+}
+
 export function autoAsignarHorarios(params: {
   partidos: PartidoParaAsignar[];
-  bloques: BloqueHorario[];
+  bloques: BloqueHorarioCancha[];
   ocupaciones: OcupacionExistente[];
   reasignarProgramados?: boolean;
 }): {
   asignaciones: AsignacionHorario[];
   sinSlot: PartidoParaAsignar[];
+  sinDisponibilidad: PartidoParaAsignar[];
   omitidos: number;
 } {
   const reasignar = params.reasignarProgramados === true;
   const ocupaciones = [...params.ocupaciones];
   const asignaciones: AsignacionHorario[] = [];
   const sinSlot: PartidoParaAsignar[] = [];
+  const sinDisponibilidad: PartidoParaAsignar[] = [];
   let omitidos = 0;
 
   const pendientes = params.partidos
@@ -207,14 +229,25 @@ export function autoAsignarHorarios(params: {
 
   for (const partido of pendientes) {
     const jugadores = [partido.jugador_1_id!, partido.jugador_2_id!];
+    
     const elegido = params.bloques.find((bloque) => {
       const clave = `${bloque.cancha}-${bloque.inicioMs}`;
       if (bloquesUsados.has(clave)) return false;
-      return bloqueLibre(bloque, ocupaciones, jugadores);
+      if (!bloqueLibre(bloque, ocupaciones, jugadores)) return false;
+      if (!partidoTieneDisponibilidadEnBloque(partido, bloque)) return false;
+      return true;
     });
 
     if (!elegido) {
-      sinSlot.push(partido);
+      const hayDisponibilidadComun = params.bloques.some((bloque) => 
+        partidoTieneDisponibilidadEnBloque(partido, bloque)
+      );
+      
+      if (!hayDisponibilidadComun) {
+        sinDisponibilidad.push(partido);
+      } else {
+        sinSlot.push(partido);
+      }
       continue;
     }
 
@@ -233,5 +266,5 @@ export function autoAsignarHorarios(params: {
     });
   }
 
-  return { asignaciones, sinSlot, omitidos };
+  return { asignaciones, sinSlot, sinDisponibilidad, omitidos };
 }

@@ -83,6 +83,7 @@ interface FichaPerfilJugadorProps {
   onCambiarClave?: (event: FormEvent<HTMLFormElement>) => void;
   cambiandoClave?: boolean;
   extraCabecera?: ReactNode;
+  extraConfig?: ReactNode;
 }
 
 export function FichaPerfilJugador({
@@ -102,6 +103,7 @@ export function FichaPerfilJugador({
   onCambiarClave,
   cambiandoClave = false,
   extraCabecera,
+  extraConfig,
 }: FichaPerfilJugadorProps) {
   const pestanas = [
     { id: "datos" as const, label: "Datos Personales", icon: UserRound },
@@ -427,77 +429,83 @@ export function FichaPerfilJugador({
         </section>
       ) : null}
 
-      {pestana === "config" && mostrarConfig && onCambiarClave ? (
-        <form
-          onSubmit={onCambiarClave}
-          className="space-y-5 rounded-2xl border border-border bg-surface p-5 sm:p-6"
-        >
-          <div>
-            <h2 className="text-base font-semibold text-foreground">
-              Cambiar contraseña
-            </h2>
-            <p className="mt-1 text-sm text-foreground/50">
-              Confirmamos tu clave actual antes de guardar la nueva.
-            </p>
-          </div>
-          <div className="space-y-1.5">
-            <label
-              htmlFor="password_actual"
-              className="block text-sm font-medium text-foreground/80"
+      {pestana === "config" && mostrarConfig ? (
+        <div className="space-y-5">
+          {extraConfig}
+
+          {onCambiarClave ? (
+            <form
+              onSubmit={onCambiarClave}
+              className="space-y-5 rounded-2xl border border-border bg-surface p-5 sm:p-6"
             >
-              Contraseña actual
-            </label>
-            <input
-              id="password_actual"
-              name="password_actual"
-              type="password"
-              autoComplete="current-password"
-              required
-              className={inputClass}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <label
-              htmlFor="password_nueva"
-              className="block text-sm font-medium text-foreground/80"
-            >
-              Contraseña nueva
-            </label>
-            <input
-              id="password_nueva"
-              name="password_nueva"
-              type="password"
-              autoComplete="new-password"
-              required
-              minLength={8}
-              className={inputClass}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <label
-              htmlFor="password_repetir"
-              className="block text-sm font-medium text-foreground/80"
-            >
-              Repetir contraseña nueva
-            </label>
-            <input
-              id="password_repetir"
-              name="password_repetir"
-              type="password"
-              autoComplete="new-password"
-              required
-              minLength={8}
-              className={inputClass}
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={cambiandoClave}
-            className="w-full rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {cambiandoClave ? "Actualizando..." : "Actualizar contraseña"}
-          </button>
-        </form>
+              <div>
+                <h2 className="text-base font-semibold text-foreground">
+                  Cambiar contraseña
+                </h2>
+                <p className="mt-1 text-sm text-foreground/50">
+                  Confirmamos tu clave actual antes de guardar la nueva.
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <label
+                  htmlFor="password_actual"
+                  className="block text-sm font-medium text-foreground/80"
+                >
+                  Contraseña actual
+                </label>
+                <input
+                  id="password_actual"
+                  name="password_actual"
+                  type="password"
+                  autoComplete="current-password"
+                  required
+                  className={inputClass}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label
+                  htmlFor="password_nueva"
+                  className="block text-sm font-medium text-foreground/80"
+                >
+                  Contraseña nueva
+                </label>
+                <input
+                  id="password_nueva"
+                  name="password_nueva"
+                  type="password"
+                  autoComplete="new-password"
+                  required
+                  minLength={8}
+                  className={inputClass}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label
+                  htmlFor="password_repetir"
+                  className="block text-sm font-medium text-foreground/80"
+                >
+                  Repetir contraseña nueva
+                </label>
+                <input
+                  id="password_repetir"
+                  name="password_repetir"
+                  type="password"
+                  autoComplete="new-password"
+                  required
+                  minLength={8}
+                  className={inputClass}
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={cambiandoClave}
+                className="w-full rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {cambiandoClave ? "Actualizando..." : "Actualizar contraseña"}
+              </button>
+            </form>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );

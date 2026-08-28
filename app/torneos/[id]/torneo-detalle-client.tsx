@@ -74,6 +74,14 @@ import {
   inscribirJugadoresEnTorneo,
   type InscriptoTorneo,
 } from "@/lib/inscripciones-torneo";
+import {
+  obtenerInscripcionJugador,
+  puedeInscribirse,
+  textoEstadoInscripcion,
+  colorEstadoInscripcion,
+  type InscripcionPago,
+} from "@/lib/inscripciones-pago";
+import { ModalInscripcionPago } from "@/components/ModalInscripcionPago";
 import { useAuth } from "@/components/auth-provider";
 
 // Fila de "partidos" con jugador_1 / jugador_2 embebidos vía sus FKs.
@@ -155,6 +163,11 @@ export function TorneoDetalleClient({
   const [isInscribiendo, setIsInscribiendo] = useState(false);
   const [partidoCargandoResultado, setPartidoCargandoResultado] =
     useState<PartidoConJugadores | null>(null);
+
+  // Estados para sistema de inscripción con pago
+  const [jugadorId, setJugadorId] = useState<string | null>(null);
+  const [inscripcionPago, setInscripcionPago] = useState<InscripcionPago | null>(null);
+  const [modalInscripcionPagoAbierto, setModalInscripcionPagoAbierto] = useState(false);
   const [partidoProgramando, setPartidoProgramando] =
     useState<PartidoConJugadores | null>(null);
   const [partidoEditando, setPartidoEditando] =
@@ -231,6 +244,42 @@ export function TorneoDetalleClient({
     setInscriptos(data ?? []);
   }, [fetchInscriptosDesdeSupabase]);
 
+  // Cargar jugadorId del usuario autenticado
+  const cargarJugadorId = useCallback(async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      setJugadorId(null);
+      return;
+    }
+    
+    const { data } = await supabase
+      .from("jugadores")
+      .select("id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+    
+    setJugadorId(data?.id ?? null);
+  }, [supabase]);
+
+  // Cargar inscripción con pago del jugador
+  const cargarInscripcionPago = useCallback(async () => {
+    if (!jugadorId || !torneoId) {
+      setInscripcionPago(null);
+      return;
+    }
+    
+    try {
+      const data = await obtenerInscripcionJugador(supabase, {
+        torneoId,
+        jugadorId,
+      });
+      setInscripcionPago(data);
+    } catch (error) {
+      console.error("Error al cargar inscripción:", error);
+      setInscripcionPago(null);
+    }
+  }, [jugadorId, torneoId, supabase]);
+
   const cargarPartidos = useCallback(async () => {
     const data = await fetchPartidosDesdeSupabase();
     if (data) setPartidos(data);
@@ -298,6 +347,16 @@ export function TorneoDetalleClient({
     fetchTodosLosJugadoresDesdeSupabase,
     fetchPartidosDesdeSupabase,
   ]);
+
+  // Cargar jugadorId del usuario autenticado
+  useEffect(() => {
+    void cargarJugadorId();
+  }, [cargarJugadorId]);
+
+  // Cargar inscripción con pago cuando tengamos jugadorId y torneoId
+  useEffect(() => {
+    void cargarInscripcionPago();
+  }, [cargarInscripcionPago]);
 
   const cargarTodosLosJugadores = useCallback(async () => {
     setIsLoadingJugadores(true);
@@ -1026,6 +1085,63 @@ export function TorneoDetalleClient({
                 ))}
               </div>
             </header>
+
+            {/* Sección de Inscripción con Pago */}
+            {torneo && (torneo.precio_inscripcion ?? 0) > 0 && jugadorId && !isAdmin ? (
+              <section className="mb-6 rounded-2xl border border-border bg-surface p-5 sm:p-6">
+                <h3 className="mb-3 text-base font-semibold text-foreground">
+                  Inscripción al Torneo
+                </h3>
+                
+                {inscripcionPago ? (
+                  // Ya tiene una inscripción
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                    <div
+                      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium ${
+                        colorEstadoInscripcion(inscripcionPago.estado_pago).border
+                      } ${colorEstadoInscripcion(inscripcionPago.estado_pago).bg} ${
+                        colorEstadoInscripcion(inscripcionPago.estado_pago).text
+                      }`}
+                    >
+                      {textoEstadoInscripcion(inscripcionPago.estado_pago)}
+                    </div>
+                    {inscripcionPago.estado_pago === "pendiente" ? (
+                      <p className="text-sm text-foreground/60">
+                        El administrador verificará tu pago en breve.
+                      </p>
+                    ) : null}
+                  </div>
+                ) : puedeInscribirse(inscripcionPago).puede ? (
+                  // Puede inscribirse
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-sm text-foreground/70">
+                        Precio de inscripción:{" "}
+                        <span className="font-semibold text-foreground">
+                          ${(torneo.precio_inscripcion ?? 0).toFixed(2)}
+                        </span>
+                      </p>
+                      {torneo.datos_pago_texto ? (
+                        <p className="mt-1 text-xs text-foreground/50">
+                          Hacé clic en "Inscribirme" para ver los datos de pago.
+                        </p>
+                      ) : null}
+                    </div>
+                    <button
+                      onClick={() => setModalInscripcionPagoAbierto(true)}
+                      className="inline-flex items-center justify-center rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-hover"
+                    >
+                      Inscribirme al Torneo
+                    </button>
+                  </div>
+                ) : (
+                  // No puede inscribirse (con razón)
+                  <p className="text-sm text-foreground/60">
+                    {puedeInscribirse(inscripcionPago).razon}
+                  </p>
+                )}
+              </section>
+            ) : null}
 
             {pestanaMostrada !== "ranking" ? (
             <div className="mb-6 space-y-3 rounded-lg bg-[#1a1a1a] p-4">
@@ -1817,6 +1933,22 @@ export function TorneoDetalleClient({
           </div>
         </div>
       )}
+
+      {/* Modal de inscripción con pago */}
+      {modalInscripcionPagoAbierto && jugadorId && torneo ? (
+        <ModalInscripcionPago
+          torneoId={torneo.id}
+          torneoNombre={torneo.nombre}
+          jugadorId={jugadorId}
+          precioInscripcion={torneo.precio_inscripcion ?? 0}
+          datosPago={torneo.datos_pago_texto ?? null}
+          onClose={() => setModalInscripcionPagoAbierto(false)}
+          onInscripcionCreada={() => {
+            void cargarInscripcionPago();
+            void cargarInscriptos();
+          }}
+        />
+      ) : null}
     </main>
   );
 }

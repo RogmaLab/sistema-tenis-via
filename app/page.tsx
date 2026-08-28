@@ -47,7 +47,7 @@ export default async function Home() {
         <header className="mb-8 flex items-start justify-between gap-3">
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-              Panel de Control - Tenis La Vía
+              Tenis La Vía
             </h1>
             <p className="mt-1 text-sm text-foreground/60">
               {admin

@@ -1,7 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CalendarClock, LayoutDashboard, Plus, Save, Sparkles, Trash2 } from "lucide-react";
+import {
+  CalendarClock,
+  Clock,
+  LayoutDashboard,
+  Plus,
+  Save,
+  Sparkles,
+  Trash2,
+} from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { CANCHAS_TORNEO, type Torneo } from "@/lib/types";
@@ -27,6 +35,14 @@ import {
   MINUTOS_PROGRAMACION,
   snapHoraAMediaHora,
 } from "@/lib/datetime";
+import {
+  calcularProximoSabado,
+  calcularProximoDomingo,
+  formatearFechaCorta,
+} from "@/lib/disponibilidad-deadline";
+import { InscripcionesPendientesTab } from "./inscripciones-pendientes";
+
+type Pestana = "disponibilidad" | "inscripciones";
 
 const inputClass =
   "w-full rounded-lg border border-border bg-background px-4 py-2.5 text-sm text-foreground outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/30";
@@ -80,6 +96,7 @@ function SelectHoraMinuto({
 
 export function PanelControlClient() {
   const supabase = useMemo(() => createClient(), []);
+  const [pestana, setPestana] = useState<Pestana>("disponibilidad");
   const [torneos, setTorneos] = useState<Pick<Torneo, "id" | "nombre" | "estado">[]>(
     []
   );
@@ -93,6 +110,15 @@ export function PanelControlClient() {
   const [reasignar, setReasignar] = useState(false);
 
   const finDeSemana = useMemo(() => fechasProximoFinDeSemana(), []);
+
+  const fechasFormateadas = useMemo(() => {
+    const sabado = calcularProximoSabado();
+    const domingo = calcularProximoDomingo();
+    return {
+      sabado: formatearFechaCorta(sabado),
+      domingo: formatearFechaCorta(domingo),
+    };
+  }, []);
 
   const cargarTorneos = useCallback(async () => {
     const { data, error } = await supabase
@@ -174,20 +200,27 @@ export function PanelControlClient() {
         torneoId,
         reasignarProgramados: reasignar,
       });
-      if (resultado.asignados === 0) {
-        toast.message(
-          resultado.sinSlot
-            ? `${resultado.sinSlot} partidos no entraron: faltan bloques o hay choques de agenda.`
-            : "No había partidos pendientes para asignar (o ya tenían horario)."
-        );
+
+      let mensaje = `✅ ${resultado.asignados} ${resultado.asignados === 1 ? "partido asignado" : "partidos asignados"}`;
+      
+      if (resultado.sinSlot > 0) {
+        mensaje += `\n⚠️ ${resultado.sinSlot} ${resultado.sinSlot === 1 ? "partido quedó" : "partidos quedaron"} sin slot libre`;
+      }
+      
+      if (resultado.sinDisponibilidad > 0) {
+        mensaje += `\n❌ ${resultado.sinDisponibilidad} ${resultado.sinDisponibilidad === 1 ? "partido requiere" : "partidos requieren"} intervención manual (sin disponibilidad común)`;
+      }
+
+      if (resultado.asignados === 0 && resultado.sinSlot === 0 && resultado.sinDisponibilidad === 0) {
+        toast.message("No había partidos pendientes para asignar (o ya tenían horario).");
         return;
       }
-      toast.success(
-        `Se programaron ${resultado.asignados} partidos en ${resultado.bloques} bloques.` +
-          (resultado.sinSlot
-            ? ` ${resultado.sinSlot} quedaron sin horario (faltan canchas o hay choques de agenda).`
-            : "")
-      );
+
+      if (resultado.partidosSinDisponibilidad.length > 0) {
+        console.log("Partidos sin disponibilidad común:", resultado.partidosSinDisponibilidad);
+      }
+
+      toast.success(mensaje, { duration: 6000 });
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "No se pudo auto-asignar."
@@ -265,17 +298,49 @@ export function PanelControlClient() {
     );
   }
 
-  if (torneos.length === 0) {
-    return (
-      <p className="rounded-2xl border border-dashed border-border bg-surface px-6 py-10 text-center text-sm text-foreground/50">
-        No hay un torneo activo. Creá uno en Torneos para configurar canchas.
-      </p>
-    );
-  }
-
   return (
     <div className="space-y-6">
-      <section className="rounded-2xl border border-border bg-surface p-5 sm:p-6">
+      {/* Pestañas de navegación */}
+      <div className="flex gap-2 rounded-2xl border border-border bg-surface p-1">
+        <button
+          onClick={() => setPestana("disponibilidad")}
+          className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
+            pestana === "disponibilidad"
+              ? "bg-accent text-white"
+              : "text-foreground/70 hover:bg-background"
+          }`}
+        >
+          <CalendarClock size={16} />
+          Disponibilidad de Canchas
+        </button>
+        <button
+          onClick={() => setPestana("inscripciones")}
+          className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
+            pestana === "inscripciones"
+              ? "bg-accent text-white"
+              : "text-foreground/70 hover:bg-background"
+          }`}
+        >
+          <Clock size={16} />
+          Inscripciones Pendientes
+        </button>
+      </div>
+
+      {/* Contenido de Inscripciones Pendientes */}
+      {pestana === "inscripciones" ? (
+        <InscripcionesPendientesTab />
+      ) : null}
+
+      {/* Contenido de Disponibilidad de Canchas */}
+      {pestana === "disponibilidad" && torneos.length === 0 ? (
+        <p className="rounded-2xl border border-dashed border-border bg-surface px-6 py-10 text-center text-sm text-foreground/50">
+          No hay un torneo activo. Creá uno en Torneos para configurar canchas.
+        </p>
+      ) : null}
+
+      {pestana === "disponibilidad" && torneos.length > 0 ? (
+        <>
+          <section className="rounded-2xl border border-border bg-surface p-5 sm:p-6">
         <label htmlFor="torneo_panel" className="block text-sm font-medium text-foreground/80">
           Torneo
         </label>
@@ -331,7 +396,9 @@ export function PanelControlClient() {
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           {(["sabado", "domingo"] as const).map((dia) => {
             const diaDraft = draft[dia];
-            const label = dia === "sabado" ? "Sábado" : "Domingo";
+            const labelBase = dia === "sabado" ? "Sábado" : "Domingo";
+            const fecha = dia === "sabado" ? fechasFormateadas.sabado : fechasFormateadas.domingo;
+            const label = `${labelBase} ${fecha}`;
             return (
               <div
                 key={dia}
@@ -506,6 +573,8 @@ export function PanelControlClient() {
           {asignando ? "Asignando..." : "Auto-asignar horarios"}
         </button>
       </section>
+        </>
+      ) : null}
     </div>
   );
 }

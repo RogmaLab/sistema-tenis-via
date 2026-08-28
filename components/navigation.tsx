@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Award, CalendarClock, Home, LayoutDashboard, LogOut, Trophy, UserRound, Users } from "lucide-react";
+import { Award, Calendar, CalendarClock, Home, LayoutDashboard, LogOut, Trophy, UserRound, Users } from "lucide-react";
 import type { ComponentType } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { BottomNav } from "@/components/BottomNav";
@@ -22,6 +22,7 @@ const NAV_LINKS: NavLink[] = [
   { href: "/jugadores", label: "Comunidad", icon: Users },
   { href: "/ranking", label: "Ranking", icon: Award },
   { href: "/perfil", label: "Mi Perfil", icon: UserRound },
+  { href: "/disponibilidad", label: "Disponibilidad", icon: Calendar },
 ];
 
 function esRutaActiva(pathname: string, href: string) {

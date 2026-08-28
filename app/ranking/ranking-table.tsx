@@ -55,13 +55,13 @@ export function RankingTable({ ranking }: RankingTableProps) {
 
   // Calcular conteos por categoría (considerando filtro de género)
   const conteosPorCategoria = useMemo(() => {
-    const conteos: Record<FiltroCategoria, number> = {
+    const conteos = {
       todas: 0,
       "3ra": 0,
       "4ta": 0,
       "5ta": 0,
       Damas: 0,
-    };
+    } as Record<FiltroCategoria, number>;
 
     ranking.forEach((jugador) => {
       const coincideGenero =

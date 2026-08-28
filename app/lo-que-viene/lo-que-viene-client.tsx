@@ -90,13 +90,13 @@ export function LoQueVieneClient() {
 
   // Calcular conteos por categoría
   const conteosPorCategoria = useMemo(() => {
-    const conteos: Record<CategoriaJugador | "todas", number> = {
+    const conteos = {
       todas: partidos.length,
       "3ra": 0,
       "4ta": 0,
       "5ta": 0,
       Damas: 0,
-    };
+    } as Record<CategoriaJugador | "todas", number>;
 
     partidos.forEach((partido) => {
       if (partido.categoria) {

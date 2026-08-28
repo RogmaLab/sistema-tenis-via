@@ -18,8 +18,12 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Tenis La Vía - Panel de Control",
+  title: "Tenis La Vía",
   description: "Plataforma de gestión de torneos de Tenis La Vía",
+  icons: {
+    icon: '/icon',
+  },
+  themeColor: '#10b981',
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

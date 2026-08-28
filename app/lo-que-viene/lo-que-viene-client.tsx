@@ -100,7 +100,10 @@ export function LoQueVieneClient() {
 
     partidos.forEach((partido) => {
       if (partido.categoria) {
-        conteos[partido.categoria]++;
+        const categoria = partido.categoria as keyof typeof conteos;
+        if (categoria in conteos) {
+          conteos[categoria]++;
+        }
       }
     });
 

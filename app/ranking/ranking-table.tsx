@@ -69,7 +69,10 @@ export function RankingTable({ ranking }: RankingTableProps) {
       
       if (coincideGenero) {
         conteos.todas++;
-        conteos[jugador.categoria]++;
+        const categoria = jugador.categoria as keyof typeof conteos;
+        if (categoria in conteos) {
+          conteos[categoria]++;
+        }
       }
     });
 

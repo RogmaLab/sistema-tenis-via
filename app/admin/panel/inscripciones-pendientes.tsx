@@ -200,19 +200,6 @@ export function InscripcionesPendientesTab() {
                   Fecha de inscripción:{" "}
                   {formatFecha(inscripcion.fecha_inscripcion)}
                 </p>
-                {inscripcion.jugador?.whatsapp ? (
-                  <p className="text-xs text-foreground/50">
-                    WhatsApp:{" "}
-                    <a
-                      href={`https://wa.me/${inscripcion.jugador.whatsapp.replace(/\D/g, "")}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-accent hover:underline"
-                    >
-                      {inscripcion.jugador.whatsapp}
-                    </a>
-                  </p>
-                ) : null}
               </div>
             </div>
 

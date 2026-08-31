@@ -11,62 +11,55 @@ export function formatFecha(fecha: string) {
   });
 }
 
-// Formatea un timestamp ISO (con hora) para mostrarlo en la UI, ej:
-// "12 sep · 18:30hs".
-export function formatFechaHorario(fechaHorario: string) {
-  const fecha = new Date(fechaHorario);
-  const fechaTexto = fecha.toLocaleDateString("es-AR", {
-    day: "2-digit",
-    month: "short",
-  });
-  const horaTexto = fecha.toLocaleTimeString("es-AR", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-  return `${fechaTexto} · ${horaTexto}hs`;
+// Convierte un ISO/timestamp a Date local; devuelve null si es inválido.
+function parseFechaProgramada(valor: string): Date | null {
+  const fecha = new Date(valor);
+  return Number.isNaN(fecha.getTime()) ? null : fecha;
 }
 
-/** Formato badge de programación: "Sáb 10:00 hs" */
-export function formatProgramacionPartido(fechaProgramada: string) {
-  const fecha = new Date(fechaProgramada);
-  if (Number.isNaN(fecha.getTime())) return "";
-
+function diaSemanaCorto(fecha: Date) {
   const dia = fecha
     .toLocaleDateString("es-AR", { weekday: "short" })
     .replace(".", "");
-  const hora = fecha.toLocaleTimeString("es-AR", {
+  return `${dia.charAt(0).toUpperCase()}${dia.slice(1)}`;
+}
+
+function diaMesNumerico(fecha: Date) {
+  return `${fecha.getDate()}/${fecha.getMonth() + 1}`;
+}
+
+function horaProgramacion(fecha: Date) {
+  return fecha.toLocaleTimeString("es-AR", {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
   });
-
-  return `${dia.charAt(0).toUpperCase()}${dia.slice(1)} ${hora} hs`;
 }
 
-/** Formato compacto 24h para el bracket: "23 Feb, 22:00 hs" */
+/** Formato unificado de programación: "Sáb 5/9 18:30 hs" */
+function formatFechaHoraPartido(fecha: Date) {
+  return `${diaSemanaCorto(fecha)} ${diaMesNumerico(fecha)} ${horaProgramacion(fecha)} hs`;
+}
+
+// Formatea un timestamp ISO (con hora) para mostrarlo en la UI, ej:
+// "Sáb 5/9 18:30 hs".
+export function formatFechaHorario(fechaHorario: string) {
+  const fecha = parseFechaProgramada(fechaHorario);
+  if (!fecha) return "";
+  return formatFechaHoraPartido(fecha);
+}
+
+/** Formato badge de programación en tarjetas: "Sáb 5/9 18:30 hs" */
+export function formatProgramacionPartido(fechaProgramada: string) {
+  const fecha = parseFechaProgramada(fechaProgramada);
+  if (!fecha) return "";
+  return formatFechaHoraPartido(fecha);
+}
+
+/** Formato compacto para cuadro y perfil: "Sáb 5/9 18:30 hs" */
 export function formatFechaCuadro(fechaProgramada: string | null | undefined) {
   if (!fechaProgramada) return "";
-
-  const fecha = new Date(fechaProgramada);
-  if (Number.isNaN(fecha.getTime())) return "";
-
-  const meses = [
-    "Ene",
-    "Feb",
-    "Mar",
-    "Abr",
-    "May",
-    "Jun",
-    "Jul",
-    "Ago",
-    "Sep",
-    "Oct",
-    "Nov",
-    "Dic",
-  ];
-  const pad = (valor: number) => String(valor).padStart(2, "0");
-
-  return `${fecha.getDate()} ${meses[fecha.getMonth()]}, ${pad(fecha.getHours())}:${pad(fecha.getMinutes())} hs`;
+  return formatProgramacionPartido(fechaProgramada);
 }
 
 // Convierte un timestamp ISO al formato del input `datetime-local`.

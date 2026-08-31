@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { X, DollarSign, Info } from "lucide-react";
+import { X, DollarSign, Info, User, CreditCard } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { crearInscripcion } from "@/lib/inscripciones-pago";
@@ -11,7 +11,8 @@ interface ModalInscripcionPagoProps {
   torneoNombre: string;
   jugadorId: string;
   precioInscripcion: number;
-  datosPago: string | null;
+  aliasCbu: string | null;
+  titular: string | null;
   onClose: () => void;
   onInscripcionCreada: () => void;
 }
@@ -21,11 +22,15 @@ export function ModalInscripcionPago({
   torneoNombre,
   jugadorId,
   precioInscripcion,
-  datosPago,
+  aliasCbu,
+  titular,
   onClose,
   onInscripcionCreada,
 }: ModalInscripcionPagoProps) {
   const [notificando, setNotificando] = useState(false);
+  const aliasMostrado = aliasCbu?.trim() || null;
+  const titularMostrado = titular?.trim() || null;
+  const hayDatosPago = Boolean(aliasMostrado || titularMostrado);
 
   async function handleNotificarPago() {
     setNotificando(true);
@@ -77,29 +82,61 @@ export function ModalInscripcionPago({
               Precio de inscripción
             </p>
             <p className="text-2xl font-bold text-foreground">
-              ${precioInscripcion.toFixed(2)}
+              ${precioInscripcion.toLocaleString("es-AR", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
             </p>
           </div>
         </div>
 
         {/* Datos de pago */}
-        {datosPago ? (
-          <div className="mb-5 rounded-xl border border-border bg-background p-4">
-            <h3 className="mb-2 text-sm font-semibold text-foreground">
-              Datos para realizar el pago
+        {hayDatosPago ? (
+          <div className="mb-5 space-y-3 rounded-xl border border-border bg-background p-4">
+            <h3 className="text-sm font-semibold text-foreground">
+              Datos para realizar la transferencia
             </h3>
-            <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/70">
-              {datosPago}
-            </p>
+            {titularMostrado ? (
+              <div className="flex items-start gap-3">
+                <User size={16} className="mt-0.5 shrink-0 text-foreground/45" />
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-foreground/45">
+                    Titular
+                  </p>
+                  <p className="text-sm font-medium text-foreground">
+                    {titularMostrado}
+                  </p>
+                </div>
+              </div>
+            ) : null}
+            {aliasMostrado ? (
+              <div className="flex items-start gap-3">
+                <CreditCard size={16} className="mt-0.5 shrink-0 text-foreground/45" />
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-foreground/45">
+                    Alias / CBU
+                  </p>
+                  <p className="break-all text-sm font-semibold text-accent">
+                    {aliasMostrado}
+                  </p>
+                </div>
+              </div>
+            ) : null}
           </div>
-        ) : null}
+        ) : (
+          <div className="mb-5 rounded-xl border border-orange-500/30 bg-orange-500/10 p-4 text-sm text-orange-400/90">
+            El administrador aún no cargó los datos de pago para este torneo.
+            Consultá con la organización antes de transferir.
+          </div>
+        )}
 
         {/* Información */}
         <div className="mb-5 flex gap-3 rounded-xl border border-blue-500/30 bg-blue-500/10 p-4">
           <Info size={18} className="mt-0.5 shrink-0 text-blue-500" />
           <p className="text-sm leading-relaxed text-blue-500/90">
-            Una vez que realices el pago, hacé clic en "Ya pagué / Notificar Pago"
-            para que el administrador valide tu inscripción.
+            Realizá la transferencia por el monto indicado y luego presioná
+            &quot;Ya transferí / Notificar Pago&quot; para que el administrador
+            valide tu inscripción.
           </p>
         </div>
 
@@ -118,7 +155,7 @@ export function ModalInscripcionPago({
             disabled={notificando}
             className="flex-1 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {notificando ? "Notificando..." : "Ya pagué / Notificar Pago"}
+            {notificando ? "Notificando..." : "Ya transferí / Notificar Pago"}
           </button>
         </div>
       </div>

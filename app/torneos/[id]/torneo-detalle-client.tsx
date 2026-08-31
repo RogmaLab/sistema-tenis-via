@@ -1173,9 +1173,12 @@ export function TorneoDetalleClient({
                           ${(torneo.precio_inscripcion ?? 0).toFixed(2)}
                         </span>
                       </p>
-                      {torneo.datos_pago_texto ? (
+                      {torneo.datos_pago_alias_cbu ||
+                      torneo.datos_pago_titular ||
+                      torneo.datos_pago_texto ? (
                         <p className="mt-1 text-xs text-foreground/50">
-                          Hacé clic en "Inscribirme" para ver los datos de pago.
+                          Hacé clic en &quot;Inscribirme&quot; para ver titular,
+                          alias/CBU y monto a transferir.
                         </p>
                       ) : null}
                     </div>
@@ -2025,7 +2028,10 @@ export function TorneoDetalleClient({
           torneoNombre={torneo.nombre}
           jugadorId={jugadorId}
           precioInscripcion={torneo.precio_inscripcion ?? 0}
-          datosPago={torneo.datos_pago_texto ?? null}
+          aliasCbu={
+            torneo.datos_pago_alias_cbu ?? torneo.datos_pago_texto ?? null
+          }
+          titular={torneo.datos_pago_titular ?? null}
           onClose={() => setModalInscripcionPagoAbierto(false)}
           onInscripcionCreada={() => {
             void cargarInscripcionPago();

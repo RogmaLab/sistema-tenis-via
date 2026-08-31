@@ -157,7 +157,10 @@ export function TorneosClient() {
     const precioInscripcion = parseFloat(
       formData.get("precio_inscripcion")?.toString() ?? "0"
     );
-    const datosPagoTexto = formData.get("datos_pago_texto")?.toString().trim() || null;
+    const datosPagoAliasCbu =
+      formData.get("datos_pago_alias_cbu")?.toString().trim() || null;
+    const datosPagoTitular =
+      formData.get("datos_pago_titular")?.toString().trim() || null;
 
     if (!nombre || !fechaInicio) return;
     if (categorias.length === 0) return;
@@ -173,7 +176,8 @@ export function TorneosClient() {
           categorias,
           formato,
           precio_inscripcion: precioInscripcion,
-          datos_pago_texto: datosPagoTexto,
+          datos_pago_alias_cbu: datosPagoAliasCbu,
+          datos_pago_titular: datosPagoTitular,
         })
         .eq("id", torneoEditando.id);
 
@@ -193,7 +197,8 @@ export function TorneosClient() {
         categorias,
         formato,
         precio_inscripcion: precioInscripcion,
-        datos_pago_texto: datosPagoTexto,
+        datos_pago_alias_cbu: datosPagoAliasCbu,
+        datos_pago_titular: datosPagoTitular,
         // Un torneo recién creado siempre arranca abriendo la inscripción.
         estado: "inscripcion",
       });
@@ -617,47 +622,77 @@ export function TorneosClient() {
                   </p>
                 </div>
 
-                {/* Campos de inscripción con pago */}
-                <div className="space-y-1.5">
-                  <label
-                    htmlFor="precio_inscripcion"
-                    className="block text-sm font-medium text-foreground/80"
-                  >
-                    Precio de Inscripción
-                  </label>
-                  <input
-                    type="number"
-                    id="precio_inscripcion"
-                    name="precio_inscripcion"
-                    min="0"
-                    step="0.01"
-                    placeholder="0.00 (gratuito)"
-                    defaultValue={torneoEditando?.precio_inscripcion ?? 0}
-                    className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-foreground outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/30"
-                  />
-                  <p className="text-xs text-foreground/40">
-                    Dejá en 0 si el torneo es gratuito. Los jugadores verán este precio al inscribirse.
+                {/* Datos de pago para inscripciones */}
+                <div className="rounded-xl border border-border bg-background p-4">
+                  <p className="text-sm font-semibold text-foreground">
+                    Datos de pago (inscripción)
                   </p>
-                </div>
+                  <p className="mt-1 text-xs text-foreground/45">
+                    Los jugadores verán esta información antes de notificar la
+                    transferencia.
+                  </p>
 
-                <div className="space-y-1.5">
-                  <label
-                    htmlFor="datos_pago_texto"
-                    className="block text-sm font-medium text-foreground/80"
-                  >
-                    Datos de Pago (Alias/CVU/Instrucciones)
-                  </label>
-                  <textarea
-                    id="datos_pago_texto"
-                    name="datos_pago_texto"
-                    rows={4}
-                    placeholder="Alias: CLUB.TENIS&#10;CVU: 0000003100012345678901&#10;Mercado Pago: 11-2345-6789"
-                    defaultValue={torneoEditando?.datos_pago_texto ?? ""}
-                    className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-foreground outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/30"
-                  />
-                  <p className="text-xs text-foreground/40">
-                    Esta información se mostrará a los jugadores al inscribirse. Incluí alias, CVU o datos de Mercado Pago.
-                  </p>
+                  <div className="mt-4 space-y-4">
+                    <div className="space-y-1.5">
+                      <label
+                        htmlFor="precio_inscripcion"
+                        className="block text-sm font-medium text-foreground/80"
+                      >
+                        Precio de inscripción
+                      </label>
+                      <input
+                        type="number"
+                        id="precio_inscripcion"
+                        name="precio_inscripcion"
+                        min="0"
+                        step="0.01"
+                        placeholder="0.00 (gratuito)"
+                        defaultValue={torneoEditando?.precio_inscripcion ?? 0}
+                        className="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-foreground outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/30"
+                      />
+                      <p className="text-xs text-foreground/40">
+                        Dejá en 0 si el torneo es gratuito.
+                      </p>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label
+                        htmlFor="datos_pago_alias_cbu"
+                        className="block text-sm font-medium text-foreground/80"
+                      >
+                        Alias / CBU
+                      </label>
+                      <input
+                        type="text"
+                        id="datos_pago_alias_cbu"
+                        name="datos_pago_alias_cbu"
+                        placeholder="Ej: CLUB.TENIS.LAVIA o 0000003100012345678901"
+                        defaultValue={
+                          torneoEditando?.datos_pago_alias_cbu ??
+                          torneoEditando?.datos_pago_texto ??
+                          ""
+                        }
+                        className="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-foreground outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/30"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label
+                        htmlFor="datos_pago_titular"
+                        className="block text-sm font-medium text-foreground/80"
+                      >
+                        Nombre del titular
+                      </label>
+                      <input
+                        type="text"
+                        id="datos_pago_titular"
+                        name="datos_pago_titular"
+                        placeholder="Ej: Club Tenis La Vía"
+                        defaultValue={torneoEditando?.datos_pago_titular ?? ""}
+                        className="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-foreground outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/30"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
 

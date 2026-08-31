@@ -5,13 +5,17 @@
 -- 1. Actualizar tabla torneos con campos de pago
 alter table public.torneos
   add column if not exists precio_inscripcion numeric(10,2) default 0,
-  add column if not exists datos_pago_texto text;
+  add column if not exists datos_pago_alias_cbu text,
+  add column if not exists datos_pago_titular text;
 
 comment on column public.torneos.precio_inscripcion is
   'Precio de inscripción al torneo (0 = gratuito)';
 
-comment on column public.torneos.datos_pago_texto is
-  'Datos de pago configurados por el admin (Alias/CVU, instrucciones, etc.)';
+comment on column public.torneos.datos_pago_alias_cbu is
+  'Alias o CBU/CVU para transferir la inscripción';
+
+comment on column public.torneos.datos_pago_titular is
+  'Nombre del titular de la cuenta de pago';
 
 -- 2. Crear tabla de inscripciones
 create table if not exists public.inscripciones_torneo (

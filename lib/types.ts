@@ -62,7 +62,10 @@ export interface Torneo {
   formato: string;
   estado: EstadoTorneo;
   precio_inscripcion?: number | null; // Precio de inscripción (0 = gratuito)
-  datos_pago_texto?: string | null; // Alias/CVU, instrucciones de pago
+  datos_pago_alias_cbu?: string | null;
+  datos_pago_titular?: string | null;
+  /** @deprecated Usar datos_pago_alias_cbu y datos_pago_titular */
+  datos_pago_texto?: string | null;
   created_at: string;
 }
 

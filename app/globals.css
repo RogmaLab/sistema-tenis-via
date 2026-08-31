@@ -52,14 +52,32 @@ button:has(> span:only-child > svg:only-child) {
 /* Estilos exclusivos para la foto del cuadro (html-to-image).
  * No afectan la UI: solo rigen mientras el contenedor tiene .is-exporting. */
 .print-cuadro-exclusivo.is-exporting {
-  background: #f8fafc !important;
+  background: #1f1f1f !important;
   padding: 14px 16px !important;
-  color: #000 !important;
+  color: #f5f5f5 !important;
 }
 
 .print-cuadro-exclusivo.is-exporting [data-export-hide],
 .print-cuadro-exclusivo.is-exporting .print\:hidden {
   display: none !important;
+}
+
+/* "A programar" solo visible en la foto exportada */
+.tarjeta-programacion-pendiente {
+  display: none;
+}
+
+/* En la web, ocultar la barra si solo quedaría "A programar" */
+.tarjeta-programacion:not(
+    :has(.tarjeta-programacion-horario, .tarjeta-programacion-cancha, [data-export-hide])
+  ) {
+  display: none;
+}
+
+.print-cuadro-exclusivo.is-exporting .tarjeta-programacion-pendiente {
+  display: inline !important;
+  color: #a3a3a3 !important;
+  font-style: italic;
 }
 
 .print-cuadro-exclusivo.is-exporting .export-cuadro-encabezado {
@@ -78,8 +96,8 @@ button:has(> span:only-child > svg:only-child) {
 }
 
 .print-cuadro-exclusivo.is-exporting .cuadro-llaves {
-  background: #f8fafc !important;
-  border-color: #e2e8f0 !important;
+  background: #1a1a1a !important;
+  border-color: #3f3f46 !important;
   padding: 6px 4px !important;
   overflow: visible !important;
 }
@@ -89,7 +107,7 @@ button:has(> span:only-child > svg:only-child) {
 }
 
 .print-cuadro-exclusivo.is-exporting .cuadro-llaves-ronda {
-  color: #0f172a !important;
+  color: #a3a3a3 !important;
 }
 
 .print-cuadro-exclusivo.is-exporting .cuadro-llaves-grid {
@@ -97,17 +115,30 @@ button:has(> span:only-child > svg:only-child) {
 }
 
 .print-cuadro-exclusivo.is-exporting .cuadro-llaves-lineas path {
-  stroke: #94a3b8 !important;
+  stroke: #52525b !important;
 }
 
 .print-cuadro-exclusivo.is-exporting .tarjeta-partido-wrap,
 .print-cuadro-exclusivo.is-exporting .tarjeta-partido {
-  background: #ffffff !important;
-  border-color: #cbd5e1 !important;
+  background: #1a1a1a !important;
+  border-color: #3f3f46 !important;
 }
 
 .print-cuadro-exclusivo.is-exporting .tarjeta-partido {
   padding: 0 !important;
+}
+
+.print-cuadro-exclusivo.is-exporting .tarjeta-programacion {
+  display: flex !important;
+  border-bottom-color: #3f3f46 !important;
+  background: #121212 !important;
+  padding-top: 4px !important;
+  padding-bottom: 4px !important;
+}
+
+.print-cuadro-exclusivo.is-exporting .tarjeta-programacion-horario,
+.print-cuadro-exclusivo.is-exporting .tarjeta-programacion-cancha {
+  color: #e5e5e5 !important;
 }
 
 .print-cuadro-exclusivo.is-exporting .fila-scoreboard {
@@ -116,46 +147,45 @@ button:has(> span:only-child > svg:only-child) {
   padding-bottom: 3px !important;
 }
 
-.print-cuadro-exclusivo.is-exporting .fila-scoreboard span,
-.print-cuadro-exclusivo.is-exporting .fila-scoreboard {
-  color: #000 !important;
+.print-cuadro-exclusivo.is-exporting .fila-scoreboard span {
+  color: #f5f5f5 !important;
 }
 
 .print-cuadro-exclusivo.is-exporting [data-export-fila="ganador"] {
-  background-color: #d1fae5 !important;
-  box-shadow: inset 3px 0 0 #059669 !important;
+  background-color: rgba(16, 185, 129, 0.22) !important;
+  box-shadow: inset 3px 0 0 #10b981 !important;
 }
 
 .print-cuadro-exclusivo.is-exporting [data-export-fila="ganador"] span,
 .print-cuadro-exclusivo.is-exporting [data-export-fila="ganador"] svg {
-  color: #047857 !important;
+  color: #ecfdf5 !important;
 }
 
 .print-cuadro-exclusivo.is-exporting [data-export-fila="perdedor"] {
-  background-color: #fef2f2 !important;
-  box-shadow: none !important;
+  background-color: rgba(239, 68, 68, 0.14) !important;
+  box-shadow: inset 3px 0 0 #ef4444 !important;
 }
 
 .print-cuadro-exclusivo.is-exporting [data-export-fila="perdedor"] span {
-  color: #b91c1c !important;
+  color: #fca5a5 !important;
 }
 
 .print-cuadro-exclusivo.is-exporting .tarjeta-partido-sep {
-  background: #e2e8f0 !important;
+  background: #3f3f46 !important;
   margin-top: 0 !important;
   margin-bottom: 0 !important;
 }
 
 .print-cuadro-exclusivo.is-exporting .tarjeta-campeon {
-  background: #d1fae5 !important;
-  border-color: #059669 !important;
+  background: rgba(16, 185, 129, 0.18) !important;
+  border-color: #10b981 !important;
   margin-top: 8px !important;
   padding: 6px 10px !important;
 }
 
 .print-cuadro-exclusivo.is-exporting .tarjeta-campeon p,
 .print-cuadro-exclusivo.is-exporting .tarjeta-campeon svg {
-  color: #047857 !important;
+  color: #6ee7b7 !important;
 }
 
 /* Estilos de impresión para cuadro de torneos */

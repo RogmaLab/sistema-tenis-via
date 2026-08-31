@@ -975,7 +975,7 @@ export function TorneoDetalleClient({
 
       const dataUrl = await toJpeg(nodo, {
         quality: 0.95,
-        backgroundColor: "#f8fafc",
+        backgroundColor: "#1f1f1f",
         pixelRatio: 2,
         cacheBust: true,
         width: Math.max(nodo.scrollWidth, nodo.offsetWidth),

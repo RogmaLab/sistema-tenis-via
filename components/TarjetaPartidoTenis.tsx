@@ -61,35 +61,43 @@ function BadgeProgramacion({
   fecha,
   cancha,
   estado,
+  ambosJugadores,
 }: {
   fecha: string | null;
   cancha: string | null;
   estado: string;
+  ambosJugadores: boolean;
 }) {
+  const pendiente = estado === "Pendiente";
   const enCancha = estaEnCancha({ fechaProgramada: fecha, estado });
+  const tieneHorario = Boolean(fecha || cancha);
+  const mostrarPendiente = pendiente && ambosJugadores && !tieneHorario;
 
-  if (!fecha && !cancha && !enCancha) return null;
-  
+  if (!tieneHorario && !enCancha && !mostrarPendiente) return null;
+
   return (
-    <div
-      data-export-hide
-      className="flex items-center justify-between gap-2 border-b border-border/70 bg-background/50 px-2.5 py-1.5 text-[10px] font-medium leading-snug text-foreground/75"
-    >
-      <div className="flex flex-wrap items-center gap-1">
+    <div className="tarjeta-programacion flex items-center justify-between gap-2 border-b border-border/70 bg-background/50 px-2.5 py-1.5 text-[10px] font-medium leading-snug text-foreground/75">
+      <div className="flex min-w-0 flex-wrap items-center gap-1">
         {fecha ? (
-          <span>
+          <span className="tarjeta-programacion-horario">
             🗓️ {formatProgramacionPartido(fecha)}
           </span>
         ) : null}
         {fecha && cancha ? (
           <span className="mx-0.5 text-foreground/25">|</span>
         ) : null}
-        {cancha ? <span>📍 {cancha}</span> : null}
+        {cancha ? (
+          <span className="tarjeta-programacion-cancha">📍 {cancha}</span>
+        ) : null}
+        {mostrarPendiente ? (
+          <span className="tarjeta-programacion-pendiente">A programar</span>
+        ) : null}
       </div>
-      
-      {/* Badge EN CANCHA */}
+
       {enCancha ? (
-        <BadgeEnCancha compacto />
+        <span data-export-hide>
+          <BadgeEnCancha compacto />
+        </span>
       ) : null}
     </div>
   );
@@ -270,6 +278,7 @@ export function TarjetaPartidoTenis({
           fecha={partido.fecha_programada}
           cancha={partido.cancha}
           estado={partido.estado}
+          ambosJugadores={Boolean(partido.jugador_1 && partido.jugador_2)}
         />
 
         {(etiqueta || (pendiente || finalizado)) && etiqueta ? (

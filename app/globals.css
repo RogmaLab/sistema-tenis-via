@@ -56,9 +56,73 @@ button:has(> span:only-child > svg:only-child) {
     margin: 0.5cm;
   }
 
+  /* 1. AISLAR: Ocultar todo excepto el cuadro */
+  body * {
+    visibility: hidden !important;
+  }
+
+  /* Hacer visible solo el contenedor del cuadro y sus hijos */
+  .print-cuadro-exclusivo,
+  .print-cuadro-exclusivo * {
+    visibility: visible !important;
+  }
+
+  /* Posicionar el cuadro en la parte superior */
+  .print-cuadro-exclusivo {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0.5cm !important;
+    background: white !important;
+  }
+
+  /* 2. COLORES POTENTES Y ALTO CONTRASTE */
+  
+  /* Fondo blanco puro */
   body {
     background: white !important;
-    color: black !important;
+  }
+
+  /* Textos en negro puro */
+  .print-cuadro-exclusivo * {
+    color: #000 !important;
+  }
+
+  /* Bordes oscuros, sólidos y bien definidos */
+  .print-cuadro-exclusivo *[class*="border"],
+  .print-cuadro-exclusivo div,
+  .print-cuadro-exclusivo section,
+  .print-cuadro-exclusivo article {
+    border-color: #111 !important;
+    border-width: 1px !important;
+  }
+
+  /* Eliminar fondos translúcidos - forzar blanco o gris oscuro */
+  .print-cuadro-exclusivo *[class*="bg-"] {
+    background: white !important;
+  }
+
+  /* Tarjetas de partido con fondo blanco y borde negro */
+  .print-cuadro-exclusivo *[class*="rounded"] {
+    background: white !important;
+    border: 1px solid #111 !important;
+  }
+
+  /* Resaltar ganadores con gris medio (no translúcido) */
+  .print-cuadro-exclusivo *[class*="bg-accent"],
+  .print-cuadro-exclusivo *[class*="text-accent"] {
+    background: #e5e5e5 !important;
+    color: #000 !important;
+    font-weight: 700 !important;
+  }
+
+  /* Líneas conectoras del cuadro en negro puro */
+  .print-cuadro-exclusivo svg,
+  .print-cuadro-exclusivo svg * {
+    stroke: #000 !important;
+    fill: none !important;
   }
 
   /* Ocultar elementos interactivos */
@@ -69,24 +133,34 @@ button:has(> span:only-child > svg:only-child) {
   .no-print,
   [data-sonner-toaster] {
     display: none !important;
-  }
-
-  /* Optimizar espacio en impresión */
-  main {
-    padding: 0 !important;
-    margin: 0 !important;
+    visibility: hidden !important;
   }
 
   /* Evitar saltos de página en elementos clave */
+  .print-cuadro-exclusivo > *,
   .cuadro-llaves,
   .tarjeta-partido {
-    page-break-inside: avoid;
-    break-inside: avoid;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
   }
 
-  /* Asegurar que el cuadro use todo el ancho */
-  .cuadro-container {
-    width: 100% !important;
-    max-width: none !important;
+  /* Encabezado del torneo en negro puro */
+  .print-cuadro-exclusivo h1 {
+    color: #000 !important;
+    font-weight: 800 !important;
+    border-bottom: 2px solid #000 !important;
+  }
+
+  /* Asegurar que el texto sea legible */
+  .print-cuadro-exclusivo p,
+  .print-cuadro-exclusivo span,
+  .print-cuadro-exclusivo div {
+    font-weight: 500 !important;
+  }
+
+  /* Nombres de jugadores en negrita */
+  .print-cuadro-exclusivo *[class*="font-semibold"],
+  .print-cuadro-exclusivo *[class*="font-bold"] {
+    font-weight: 700 !important;
   }
 }

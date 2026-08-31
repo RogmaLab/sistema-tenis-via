@@ -1542,31 +1542,42 @@ export function TorneoDetalleClient({
                   ) : null}
                 </div>
               ) : (
-                <CuadroLlaves
-                  partidos={partidosCuadroCategoria}
-                  rondaResaltada={rondaCuadroActiva}
-                  isAdmin={isAdmin}
-                  onCargarResultado={
-                    isAdmin
-                      ? (card) => {
-                          const original = partidos.find(
-                            (partido) => partido.id === card.id
-                          );
-                          if (original) abrirModalResultado(original);
-                        }
-                      : undefined
-                  }
-                  onProgramarPartido={
-                    isAdmin
-                      ? (card) => {
-                          const original = partidos.find(
-                            (partido) => partido.id === card.id
-                          );
-                          if (original) setPartidoProgramando(original);
-                        }
-                      : undefined
-                  }
-                />
+                <div className="print-cuadro-exclusivo">
+                  {/* Encabezado dinámico para impresión */}
+                  <div className="mb-6 hidden border-b-2 border-black pb-3 print:block">
+                    <h1 className="text-2xl font-bold text-black">
+                      {torneo.nombre}
+                      {categoriaFiltro !== "Todas" && ` - ${categoriaFiltro}`}
+                      {generoFiltro !== "Todos" && ` - ${generoFiltro}`}
+                    </h1>
+                  </div>
+
+                  <CuadroLlaves
+                    partidos={partidosCuadroCategoria}
+                    rondaResaltada={rondaCuadroActiva}
+                    isAdmin={isAdmin}
+                    onCargarResultado={
+                      isAdmin
+                        ? (card) => {
+                            const original = partidos.find(
+                              (partido) => partido.id === card.id
+                            );
+                            if (original) abrirModalResultado(original);
+                          }
+                        : undefined
+                    }
+                    onProgramarPartido={
+                      isAdmin
+                        ? (card) => {
+                            const original = partidos.find(
+                              (partido) => partido.id === card.id
+                            );
+                            if (original) setPartidoProgramando(original);
+                          }
+                        : undefined
+                    }
+                  />
+                </div>
               )}
             </section>
             ))}

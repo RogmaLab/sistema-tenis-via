@@ -351,38 +351,38 @@ export function TarjetaPartidoTenis({
             data-export-hide
             className="flex flex-col gap-1.5 border-t border-[#3f3f46] p-1.5 print:hidden"
           >
-            <div className="flex gap-1.5">
-            {puedeProgramar && onProgramarPartido ? (
-              <button
-                type="button"
-                onClick={onProgramarPartido}
-                className="inline-flex min-h-8 flex-1 items-center justify-center gap-1 rounded-md border border-[#3f3f46] px-2 py-1 text-[10px] font-semibold text-foreground/70 transition hover:bg-background/60 hover:text-foreground"
-              >
-                <Calendar size={12} strokeWidth={2.25} />
-                {programado ? "Editar horario" : "Programar"}
-              </button>
-            ) : null}
-            {(puedeCargar || puedeEditar) && onCargarResultado ? (
-              <button
-                type="button"
-                onClick={onCargarResultado}
-                className="inline-flex min-h-8 flex-1 items-center justify-center gap-1 rounded-md bg-accent px-2 py-1 text-[10px] font-semibold text-white transition hover:bg-accent-hover active:scale-[0.98]"
-              >
-                <Pencil size={12} strokeWidth={2.25} />
-                {pendiente ? "Cargar Resultado" : "Editar Resultado"}
-              </button>
-            ) : null}
-            </div>
             {puedeSuspenderPorLluvia ? (
               <button
                 type="button"
                 onClick={onSuspenderPorLluvia}
-                className="inline-flex min-h-8 w-full items-center justify-center gap-1 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[10px] font-semibold text-amber-400 transition hover:bg-amber-500/20"
+                className="inline-flex min-h-9 w-full items-center justify-center gap-1.5 rounded-md bg-amber-500 px-2.5 py-2 text-[11px] font-bold uppercase tracking-wide text-black shadow-sm transition hover:bg-amber-600 active:scale-[0.98]"
               >
-                <CloudRain size={12} strokeWidth={2.25} />
+                <CloudRain size={14} strokeWidth={2.5} className="text-black" />
                 Suspendido por lluvia
               </button>
             ) : null}
+            <div className="flex gap-1.5">
+              {puedeProgramar && onProgramarPartido ? (
+                <button
+                  type="button"
+                  onClick={onProgramarPartido}
+                  className="inline-flex min-h-8 flex-1 items-center justify-center gap-1 rounded-md border border-[#3f3f46] px-2 py-1 text-[10px] font-semibold text-foreground/70 transition hover:bg-background/60 hover:text-foreground"
+                >
+                  <Calendar size={12} strokeWidth={2.25} />
+                  {programado ? "Editar horario" : "Programar"}
+                </button>
+              ) : null}
+              {(puedeCargar || puedeEditar) && onCargarResultado ? (
+                <button
+                  type="button"
+                  onClick={onCargarResultado}
+                  className="inline-flex min-h-8 flex-1 items-center justify-center gap-1 rounded-md border border-[#3f3f46] bg-background/40 px-2 py-1 text-[10px] font-semibold text-foreground/80 transition hover:bg-background/70 hover:text-foreground"
+                >
+                  <Pencil size={12} strokeWidth={2.25} />
+                  {pendiente ? "Cargar Resultado" : "Editar Resultado"}
+                </button>
+              ) : null}
+            </div>
           </div>
         ) : null}
       </div>

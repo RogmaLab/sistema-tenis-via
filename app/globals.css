@@ -49,6 +49,115 @@ button:has(> span:only-child > svg:only-child) {
   min-width: 44px;
 }
 
+/* Estilos exclusivos para la foto del cuadro (html-to-image).
+ * No afectan la UI: solo rigen mientras el contenedor tiene .is-exporting. */
+.print-cuadro-exclusivo.is-exporting {
+  background: #f8fafc !important;
+  padding: 14px 16px !important;
+  color: #000 !important;
+}
+
+.print-cuadro-exclusivo.is-exporting [data-export-hide],
+.print-cuadro-exclusivo.is-exporting .print\:hidden {
+  display: none !important;
+}
+
+.print-cuadro-exclusivo.is-exporting .export-cuadro-encabezado {
+  display: block !important;
+  margin-bottom: 10px !important;
+  padding-bottom: 8px !important;
+  border-bottom: 2px solid #d9682f !important;
+}
+
+.print-cuadro-exclusivo.is-exporting .export-cuadro-encabezado h1 {
+  color: #d9682f !important;
+  font-size: 1.2rem !important;
+  font-weight: 800 !important;
+  line-height: 1.25 !important;
+  border: 0 !important;
+}
+
+.print-cuadro-exclusivo.is-exporting .cuadro-llaves {
+  background: #f8fafc !important;
+  border-color: #e2e8f0 !important;
+  padding: 6px 4px !important;
+  overflow: visible !important;
+}
+
+.print-cuadro-exclusivo.is-exporting .cuadro-llaves-titulos {
+  margin-bottom: 6px !important;
+}
+
+.print-cuadro-exclusivo.is-exporting .cuadro-llaves-ronda {
+  color: #0f172a !important;
+}
+
+.print-cuadro-exclusivo.is-exporting .cuadro-llaves-grid {
+  gap: 6px 10px !important;
+}
+
+.print-cuadro-exclusivo.is-exporting .cuadro-llaves-lineas path {
+  stroke: #94a3b8 !important;
+}
+
+.print-cuadro-exclusivo.is-exporting .tarjeta-partido-wrap,
+.print-cuadro-exclusivo.is-exporting .tarjeta-partido {
+  background: #ffffff !important;
+  border-color: #cbd5e1 !important;
+}
+
+.print-cuadro-exclusivo.is-exporting .tarjeta-partido {
+  padding: 0 !important;
+}
+
+.print-cuadro-exclusivo.is-exporting .fila-scoreboard {
+  min-height: 0 !important;
+  padding-top: 3px !important;
+  padding-bottom: 3px !important;
+}
+
+.print-cuadro-exclusivo.is-exporting .fila-scoreboard span,
+.print-cuadro-exclusivo.is-exporting .fila-scoreboard {
+  color: #000 !important;
+}
+
+.print-cuadro-exclusivo.is-exporting [data-export-fila="ganador"] {
+  background-color: #d1fae5 !important;
+  box-shadow: inset 3px 0 0 #059669 !important;
+}
+
+.print-cuadro-exclusivo.is-exporting [data-export-fila="ganador"] span,
+.print-cuadro-exclusivo.is-exporting [data-export-fila="ganador"] svg {
+  color: #047857 !important;
+}
+
+.print-cuadro-exclusivo.is-exporting [data-export-fila="perdedor"] {
+  background-color: #fef2f2 !important;
+  box-shadow: none !important;
+}
+
+.print-cuadro-exclusivo.is-exporting [data-export-fila="perdedor"] span {
+  color: #b91c1c !important;
+}
+
+.print-cuadro-exclusivo.is-exporting .tarjeta-partido-sep {
+  background: #e2e8f0 !important;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+.print-cuadro-exclusivo.is-exporting .tarjeta-campeon {
+  background: #d1fae5 !important;
+  border-color: #059669 !important;
+  margin-top: 8px !important;
+  padding: 6px 10px !important;
+}
+
+.print-cuadro-exclusivo.is-exporting .tarjeta-campeon p,
+.print-cuadro-exclusivo.is-exporting .tarjeta-campeon svg {
+  color: #047857 !important;
+}
+
 /* Estilos de impresión para cuadro de torneos */
 @media print {
   @page {

@@ -961,22 +961,25 @@ export function TorneoDetalleClient({
       return;
     }
 
-    const encabezado = nodo.querySelector(".export-cuadro-encabezado");
-    encabezado?.classList.remove("hidden");
-    const paddingAnterior = nodo.style.padding;
-    const fondoAnterior = nodo.style.backgroundColor;
-    nodo.style.padding = "24px";
-    nodo.style.backgroundColor = "#ffffff";
-
     setIsExportandoCuadro(true);
+    nodo.classList.add("is-exporting");
+
     try {
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => resolve());
+        });
+      });
+      void nodo.offsetHeight;
+      await new Promise((resolve) => setTimeout(resolve, 80));
+
       const dataUrl = await toJpeg(nodo, {
         quality: 0.95,
-        backgroundColor: "#ffffff",
+        backgroundColor: "#f8fafc",
         pixelRatio: 2,
         cacheBust: true,
-        width: Math.max(nodo.scrollWidth, nodo.clientWidth),
-        height: Math.max(nodo.scrollHeight, nodo.clientHeight),
+        width: Math.max(nodo.scrollWidth, nodo.offsetWidth),
+        height: Math.max(nodo.scrollHeight, nodo.offsetHeight),
         filter: (domNode) => {
           if (!(domNode instanceof HTMLElement)) return true;
           if (domNode.hasAttribute("data-export-hide")) return false;
@@ -994,9 +997,7 @@ export function TorneoDetalleClient({
       console.error("Error al exportar el cuadro:", error);
       toast.error("No se pudo generar la imagen del cuadro.");
     } finally {
-      encabezado?.classList.add("hidden");
-      nodo.style.padding = paddingAnterior;
-      nodo.style.backgroundColor = fondoAnterior;
+      nodo.classList.remove("is-exporting");
       setIsExportandoCuadro(false);
     }
   }

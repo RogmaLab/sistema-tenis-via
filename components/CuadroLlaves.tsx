@@ -55,7 +55,7 @@ function TarjetaCampeon({ partidoFinal }: { partidoFinal: PartidoLlave }) {
 
   return (
     <div
-      className="mt-3 w-full min-w-0 overflow-hidden rounded-lg border px-2.5 py-2"
+      className="tarjeta-campeon mt-3 w-full min-w-0 overflow-hidden rounded-lg border px-2.5 py-2"
       style={{
         backgroundColor: campeon ? "rgba(16, 185, 129, 0.18)" : TEMA_LLAVES.fondoPartido,
         borderColor: campeon ? "#10b981" : TEMA_LLAVES.borde,
@@ -162,7 +162,7 @@ export function CuadroLlaves({
 
   return (
     <div
-      className="w-full overflow-x-auto rounded-2xl border p-3 sm:p-4"
+      className="cuadro-llaves w-full overflow-x-auto rounded-2xl border p-3 sm:p-4"
       style={{
         backgroundColor: TEMA_LLAVES.fondoPartido,
         borderColor: TEMA_LLAVES.borde,
@@ -173,7 +173,7 @@ export function CuadroLlaves({
         className="relative h-auto min-w-[640px] pointer-events-none"
       >
         <svg
-          className="pointer-events-none absolute inset-0 h-full w-full"
+          className="cuadro-llaves-lineas pointer-events-none absolute inset-0 h-full w-full"
           aria-hidden
         >
           {lineas.map((linea, i) => (
@@ -189,7 +189,7 @@ export function CuadroLlaves({
         </svg>
 
         <div
-          className="relative z-10 mb-2 grid w-full gap-x-4"
+          className="cuadro-llaves-titulos relative z-10 mb-2 grid w-full gap-x-4"
           style={{ gridTemplateColumns: columnasGrid }}
         >
           {columnas.map((columna) => {
@@ -197,7 +197,7 @@ export function CuadroLlaves({
             return (
               <p
                 key={`titulo-${columna.fase}`}
-                className="truncate text-center text-[10px] font-semibold uppercase tracking-[0.14em] sm:text-[11px]"
+                className="cuadro-llaves-ronda truncate text-center text-[10px] font-semibold uppercase tracking-[0.14em] sm:text-[11px]"
                 style={{
                   color: activa ? TEMA_LLAVES.acento : TEMA_LLAVES.subtitulo,
                 }}
@@ -209,7 +209,7 @@ export function CuadroLlaves({
         </div>
 
         <div
-          className="relative z-10 grid w-full content-start items-start gap-x-4 gap-y-4 pointer-events-none"
+          className="cuadro-llaves-grid relative z-10 grid w-full content-start items-start gap-x-4 gap-y-4 pointer-events-none"
           style={{
             gridTemplateColumns: columnasGrid,
             gridTemplateRows: `repeat(${filasArbol}, min-content)`,

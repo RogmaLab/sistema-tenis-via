@@ -71,7 +71,10 @@ function BadgeProgramacion({
   if (!fecha && !cancha && !enCancha) return null;
   
   return (
-    <div className="flex items-center justify-between gap-2 border-b border-border/70 bg-background/50 px-2.5 py-1.5 text-[10px] font-medium leading-snug text-foreground/75">
+    <div
+      data-export-hide
+      className="flex items-center justify-between gap-2 border-b border-border/70 bg-background/50 px-2.5 py-1.5 text-[10px] font-medium leading-snug text-foreground/75"
+    >
       <div className="flex flex-wrap items-center gap-1">
         {fecha ? (
           <span>
@@ -117,7 +120,14 @@ function FilaScoreboard({
 
   return (
     <div
-      className={`flex items-center gap-2 px-2.5 ${compacto ? "min-h-8 py-0.5" : "min-h-9 py-1"}`}
+      data-export-fila={
+        finalizado && esGanador
+          ? "ganador"
+          : finalizado && esPerdedor
+            ? "perdedor"
+            : undefined
+      }
+      className={`fila-scoreboard flex items-center gap-2 px-2.5 ${compacto ? "min-h-8 py-0.5" : "min-h-9 py-1"}`}
       style={
         finalizado && esGanador
           ? {
@@ -250,9 +260,9 @@ export function TarjetaPartidoTenis({
     isAdmin && finalizado && !esWO && Boolean(onCargarResultado);
 
   return (
-    <div ref={cardRef} className="w-full min-w-0 max-w-full">
+    <div ref={cardRef} className="tarjeta-partido-wrap w-full min-w-0 max-w-full">
       <div
-        className={`overflow-hidden rounded-lg border bg-[#1a1a1a] ${
+        className={`tarjeta-partido overflow-hidden rounded-lg border bg-[#1a1a1a] ${
           resaltado ? "border-accent/45" : "border-[#3f3f46]"
         }`}
       >
@@ -263,7 +273,10 @@ export function TarjetaPartidoTenis({
         />
 
         {(etiqueta || (pendiente || finalizado)) && etiqueta ? (
-          <div className="flex items-center justify-between gap-2 border-b border-border/50 px-2.5 py-1">
+          <div
+            data-export-hide
+            className="flex items-center justify-between gap-2 border-b border-border/50 px-2.5 py-1"
+          >
             <p className="text-[10px] font-semibold uppercase tracking-wide text-foreground/40">
               {etiqueta}
             </p>
@@ -290,7 +303,7 @@ export function TarjetaPartidoTenis({
           compacto={compacto}
           esPlaceholder={esTextoPlaceholder(j1Nombre)}
         />
-        <div className="mx-2 h-px bg-[#3f3f46]" />
+        <div className="tarjeta-partido-sep mx-2 h-px bg-[#3f3f46]" />
         <FilaScoreboard
           nombre={j2Nombre}
           games={sets?.j2 ?? null}

@@ -118,11 +118,20 @@ function FilaScoreboard({
   return (
     <div
       className={`flex items-center gap-2 px-2.5 ${compacto ? "min-h-8 py-0.5" : "min-h-9 py-1"}`}
+      style={
+        finalizado && esGanador
+          ? {
+              backgroundColor: "rgba(16, 185, 129, 0.22)",
+              boxShadow: "inset 3px 0 0 #10b981",
+            }
+          : undefined
+      }
     >
       <div className="flex min-w-0 flex-1 items-center gap-1.5">
         {finalizado && esGanador ? (
           <Check
-            className="h-3.5 w-3.5 shrink-0 text-emerald-500"
+            className="h-3.5 w-3.5 shrink-0"
+            style={{ color: "#10b981" }}
             strokeWidth={3}
             aria-hidden
           />
@@ -133,15 +142,26 @@ function FilaScoreboard({
           title={nombre}
           className={`truncate leading-tight ${texto} ${
             esPlaceholder
-              ? "font-normal italic text-foreground/40"
+              ? "font-normal italic"
               : finalizado && esGanador
-                ? "font-bold text-white"
+                ? "font-bold"
                 : finalizado && esPerdedor
-                  ? "font-medium text-foreground/35"
+                  ? "font-medium"
                   : nombre === "BYE"
-                    ? "font-medium uppercase tracking-wide text-foreground/45"
-                    : "font-medium text-foreground"
+                    ? "font-medium uppercase tracking-wide"
+                    : "font-medium"
           }`}
+          style={{
+            color: esPlaceholder
+              ? "#737373"
+              : finalizado && esGanador
+                ? "#ecfdf5"
+                : finalizado && esPerdedor
+                  ? "#9ca3af"
+                  : nombre === "BYE"
+                    ? "#9ca3af"
+                    : "#f5f5f5",
+          }}
         >
           {nombre}
         </span>
@@ -154,17 +174,18 @@ function FilaScoreboard({
               const rivalGameNum = gamesRival?.[i] ? Number(gamesRival[i]) : 0;
               const ganoEsteSet = gameNum > rivalGameNum;
               const perdioEsteSet = gameNum < rivalGameNum;
-              
+
               return (
                 <span
                   key={`${game}-${i}`}
-                  className={`min-w-[1.1rem] text-right text-[11px] font-semibold leading-none sm:text-xs ${
-                    finalizado && ganoEsteSet
-                      ? "text-white"
+                  className="min-w-[1.1rem] text-right text-[11px] font-semibold leading-none sm:text-xs"
+                  style={{
+                    color: finalizado && ganoEsteSet
+                      ? "#ffffff"
                       : finalizado && perdioEsteSet
-                        ? "text-foreground/30"
-                        : "text-foreground/55"
-                  }`}
+                        ? "#6b7280"
+                        : "#a3a3a3",
+                  }}
                 >
                   {game}
                 </span>
@@ -173,7 +194,10 @@ function FilaScoreboard({
           </span>
         ) : null}
         {esWO && esGanador ? (
-          <span className="text-[10px] font-bold uppercase tracking-wide text-accent">
+          <span
+            className="text-[10px] font-bold uppercase tracking-wide"
+            style={{ color: "#34d399" }}
+          >
             W.O.
           </span>
         ) : null}
@@ -280,7 +304,10 @@ export function TarjetaPartidoTenis({
         />
 
         {isAdmin && (puedeProgramar || puedeCargar || puedeEditar) ? (
-          <div className="flex gap-1.5 border-t border-[#3f3f46] p-1.5 print:hidden">
+          <div
+            data-export-hide
+            className="flex gap-1.5 border-t border-[#3f3f46] p-1.5 print:hidden"
+          >
             {puedeProgramar && onProgramarPartido ? (
               <button
                 type="button"

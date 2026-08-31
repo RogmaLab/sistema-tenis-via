@@ -13,12 +13,14 @@ import {
 import {
   ArrowLeft,
   Pencil,
+  Printer,
   Shuffle,
   Trash2,
   Trophy,
   UserPlus,
 } from "lucide-react";
 import { toast } from "sonner";
+import { toJpeg } from "html-to-image";
 import { createClient } from "@/lib/supabase/client";
 import {
   actualizarResultadoPartidoConPropagacion,
@@ -183,6 +185,8 @@ export function TorneoDetalleClient({
   const [rondaCuadroManual, setRondaCuadroManual] = useState<string | null>(
     null
   );
+  const [isExportandoCuadro, setIsExportandoCuadro] = useState(false);
+  const cuadroExportRef = useRef<HTMLDivElement>(null);
 
   // Fetchers "puros": solo consultan Supabase y devuelven el resultado (o
   // `null` si hubo error), sin tocar ningún estado. Sirven de base tanto
@@ -950,6 +954,53 @@ export function TorneoDetalleClient({
     await cargarPartidos();
   }
 
+  async function handleExportarCuadroJpg() {
+    const nodo = cuadroExportRef.current;
+    if (!nodo) {
+      toast.error("Todavía no hay un cuadro para exportar.");
+      return;
+    }
+
+    const encabezado = nodo.querySelector(".export-cuadro-encabezado");
+    encabezado?.classList.remove("hidden");
+    const paddingAnterior = nodo.style.padding;
+    const fondoAnterior = nodo.style.backgroundColor;
+    nodo.style.padding = "24px";
+    nodo.style.backgroundColor = "#ffffff";
+
+    setIsExportandoCuadro(true);
+    try {
+      const dataUrl = await toJpeg(nodo, {
+        quality: 0.95,
+        backgroundColor: "#ffffff",
+        pixelRatio: 2,
+        cacheBust: true,
+        width: Math.max(nodo.scrollWidth, nodo.clientWidth),
+        height: Math.max(nodo.scrollHeight, nodo.clientHeight),
+        filter: (domNode) => {
+          if (!(domNode instanceof HTMLElement)) return true;
+          if (domNode.hasAttribute("data-export-hide")) return false;
+          if (domNode.classList.contains("print:hidden")) return false;
+          return true;
+        },
+      });
+
+      const link = document.createElement("a");
+      link.download = "cuadro-torneo.jpg";
+      link.href = dataUrl;
+      link.click();
+      toast.success("Cuadro descargado. Listo para compartir.");
+    } catch (error) {
+      console.error("Error al exportar el cuadro:", error);
+      toast.error("No se pudo generar la imagen del cuadro.");
+    } finally {
+      encabezado?.classList.add("hidden");
+      nodo.style.padding = paddingAnterior;
+      nodo.style.backgroundColor = fondoAnterior;
+      setIsExportandoCuadro(false);
+    }
+  }
+
   function abrirModalEditarPartido(partido: PartidoConJugadores) {
     if (!isAdmin) return;
     setPartidoEditando(partido);
@@ -1407,45 +1458,38 @@ export function TorneoDetalleClient({
                   Partidos / Llaves
                 </h2>
 
-                <div className="flex flex-wrap items-center gap-2">
-                  {/* Botón Exportar PDF - visible para todos */}
-                  <button
-                    type="button"
-                    onClick={() => window.print()}
-                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-accent bg-accent/10 px-4 py-2.5 text-sm font-semibold text-accent transition hover:bg-accent/20 active:scale-[0.98] print:hidden"
-                    title="Guardar el cuadro como PDF"
-                  >
-                    🖨️ Exportar / Guardar PDF
-                  </button>
+                <div className="flex flex-wrap items-center justify-end gap-2 print:hidden">
+                  {isAdmin && !isLoadingPartidos ? (
+                    <>
+                      {partidosClasificacionFiltrados.length === 0 &&
+                      inscriptosFiltrados.length >= 2 ? (
+                        <button
+                          type="button"
+                          onClick={handleGenerarCruces}
+                          disabled={
+                            isGenerandoCruces || inscriptosFiltrados.length < 2
+                          }
+                          title={
+                            inscriptosFiltrados.length < 2
+                              ? "Necesitás al menos 2 personas inscriptas"
+                              : undefined
+                          }
+                          className="inline-flex items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-hover active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <Shuffle size={16} />
+                          {isGenerandoCruces
+                            ? "Generando..."
+                            : "Generar Cruces Automáticos"}
+                        </button>
+                      ) : null}
 
-                  {isAdmin && !isLoadingPartidos && (
-                  <div className="flex flex-col gap-2 print:hidden sm:flex-row sm:items-center">
-                    {partidosClasificacionFiltrados.length === 0 &&
-                      inscriptosFiltrados.length >= 2 && (
-                      <button
-                        type="button"
-                        onClick={handleGenerarCruces}
-                        disabled={isGenerandoCruces || inscriptosFiltrados.length < 2}
-                        title={
-                          inscriptosFiltrados.length < 2
-                            ? "Necesitás al menos 2 personas inscriptas"
-                            : undefined
-                        }
-                        className="inline-flex items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-hover active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        <Shuffle size={16} />
-                        {isGenerandoCruces
-                          ? "Generando..."
-                          : "Generar Cruces Automáticos"}
-                      </button>
-                    )}
-
-                    {partidosClasificacionFiltrados.length > 0 && (
+                      {partidosClasificacionFiltrados.length > 0 ? (
                         <button
                           type="button"
                           onClick={handleGenerarCuadroFinal}
                           disabled={
-                            isGenerandoCuadro || !clasificacionCategoriaCompleta
+                            isGenerandoCuadro ||
+                            !clasificacionCategoriaCompleta
                           }
                           title={
                             !clasificacionCategoriaCompleta
@@ -1461,21 +1505,35 @@ export function TorneoDetalleClient({
                               ? "Regenerar Cuadro desde Clasificación"
                               : "Generar Cuadro desde Clasificación"}
                         </button>
-                      )}
+                      ) : null}
 
-                    {hayCuadroEliminatorio(partidosCuadroCategoria) && (
-                      <button
-                        type="button"
-                        onClick={() => setIsModalEditarCuadroOpen(true)}
-                        disabled={partidosPrimeraRondaCuadro.length === 0}
-                        className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border bg-surface px-4 py-2.5 text-sm font-semibold text-foreground/80 transition hover:bg-background hover:text-foreground active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        <Pencil size={16} />
-                        Editar Cuadro
-                      </button>
-                    )}
-                  </div>
-                  )}
+                      {hayCuadroEliminatorio(partidosCuadroCategoria) ? (
+                        <button
+                          type="button"
+                          onClick={() => setIsModalEditarCuadroOpen(true)}
+                          disabled={partidosPrimeraRondaCuadro.length === 0}
+                          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border bg-surface px-4 py-2.5 text-sm font-semibold text-foreground/80 transition hover:bg-background hover:text-foreground active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <Pencil size={16} />
+                          Editar Cuadro
+                        </button>
+                      ) : null}
+                    </>
+                  ) : null}
+
+                  <button
+                    type="button"
+                    onClick={() => void handleExportarCuadroJpg()}
+                    disabled={
+                      isExportandoCuadro ||
+                      !hayCuadroEliminatorio(partidosCuadroCategoria)
+                    }
+                    title="Exportar Cuadro a JPG"
+                    aria-label="Exportar Cuadro a JPG"
+                    className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-accent bg-accent/10 p-2.5 text-accent transition hover:bg-accent/20 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Printer size={18} strokeWidth={2.25} />
+                  </button>
                 </div>
               </div>
 
@@ -1542,9 +1600,11 @@ export function TorneoDetalleClient({
                   ) : null}
                 </div>
               ) : (
-                <div className="print-cuadro-exclusivo">
-                  {/* Encabezado dinámico para impresión */}
-                  <div className="mb-6 hidden border-b-2 border-black pb-3 print:block">
+                <div
+                  ref={cuadroExportRef}
+                  className="print-cuadro-exclusivo"
+                >
+                  <div className="export-cuadro-encabezado mb-6 hidden border-b-2 border-black pb-3 print:block">
                     <h1 className="text-2xl font-bold text-black">
                       {torneo.nombre}
                       {categoriaFiltro !== "Todas" && ` - ${categoriaFiltro}`}

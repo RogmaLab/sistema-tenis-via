@@ -57,8 +57,9 @@ function TarjetaCampeon({ partidoFinal }: { partidoFinal: PartidoLlave }) {
     <div
       className="mt-3 w-full min-w-0 overflow-hidden rounded-lg border px-2.5 py-2"
       style={{
-        backgroundColor: TEMA_LLAVES.fondoPartido,
-        borderColor: TEMA_LLAVES.borde,
+        backgroundColor: campeon ? "rgba(16, 185, 129, 0.18)" : TEMA_LLAVES.fondoPartido,
+        borderColor: campeon ? "#10b981" : TEMA_LLAVES.borde,
+        boxShadow: campeon ? "inset 3px 0 0 #10b981" : undefined,
       }}
     >
       <div className="flex items-center gap-2">
@@ -66,11 +67,11 @@ function TarjetaCampeon({ partidoFinal }: { partidoFinal: PartidoLlave }) {
           size={14}
           strokeWidth={2.25}
           className="shrink-0"
-          style={{ color: TEMA_LLAVES.acento }}
+          style={{ color: campeon ? "#10b981" : TEMA_LLAVES.acento }}
         />
         <p
           className="text-[10px] font-semibold uppercase tracking-[0.16em]"
-          style={{ color: TEMA_LLAVES.subtitulo }}
+          style={{ color: campeon ? "#6ee7b7" : TEMA_LLAVES.subtitulo }}
         >
           Campeón/a
         </p>
@@ -78,7 +79,7 @@ function TarjetaCampeon({ partidoFinal }: { partidoFinal: PartidoLlave }) {
       <p
         title={campeon ?? "A definir"}
         className="mt-1 truncate text-[12px] font-semibold leading-tight sm:text-[13px]"
-        style={{ color: campeon ? TEMA_LLAVES.acento : TEMA_LLAVES.subtitulo }}
+        style={{ color: campeon ? "#ecfdf5" : TEMA_LLAVES.subtitulo }}
       >
         {campeon ?? "A definir"}
       </p>

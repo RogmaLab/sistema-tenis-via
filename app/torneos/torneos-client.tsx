@@ -161,6 +161,7 @@ export function TorneosClient() {
       formData.get("datos_pago_alias_cbu")?.toString().trim() || null;
     const datosPagoTitular =
       formData.get("datos_pago_titular")?.toString().trim() || null;
+    const aceptaEfectivo = formData.get("acepta_efectivo") === "on";
 
     if (!nombre || !fechaInicio) return;
     if (categorias.length === 0) return;
@@ -178,6 +179,7 @@ export function TorneosClient() {
           precio_inscripcion: precioInscripcion,
           datos_pago_alias_cbu: datosPagoAliasCbu,
           datos_pago_titular: datosPagoTitular,
+          acepta_efectivo: aceptaEfectivo,
         })
         .eq("id", torneoEditando.id);
 
@@ -199,6 +201,7 @@ export function TorneosClient() {
         precio_inscripcion: precioInscripcion,
         datos_pago_alias_cbu: datosPagoAliasCbu,
         datos_pago_titular: datosPagoTitular,
+        acepta_efectivo: aceptaEfectivo,
         // Un torneo recién creado siempre arranca abriendo la inscripción.
         estado: "inscripcion",
       });
@@ -692,6 +695,24 @@ export function TorneosClient() {
                         className="w-full rounded-lg border border-border bg-surface px-4 py-2.5 text-foreground outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/30"
                       />
                     </div>
+
+                    <label className="flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border border-border bg-surface px-4 py-3 transition hover:border-accent/40">
+                      <input
+                        type="checkbox"
+                        name="acepta_efectivo"
+                        defaultChecked={torneoEditando?.acepta_efectivo ?? true}
+                        className="mt-0.5 h-4 w-4 accent-accent"
+                      />
+                      <span>
+                        <span className="block text-sm font-medium text-foreground">
+                          Aceptar pago en efectivo en el club (10% off)
+                        </span>
+                        <span className="mt-1 block text-xs text-foreground/45">
+                          Los jugadores podrán elegir abonar en persona con un
+                          10% de descuento sobre el precio de transferencia.
+                        </span>
+                      </span>
+                    </label>
                   </div>
                 </div>
               </div>

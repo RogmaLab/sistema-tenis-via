@@ -8,6 +8,7 @@ export interface PartidoParaCuadro {
   ronda?: string | null;
   numero_slot?: number | null;
   fecha_programada: string | null;
+  suspendido_lluvia?: boolean;
   siguiente_partido_id: string | null;
   jugador_1: { id: string; nombre_completo: string } | null;
   jugador_2: { id: string; nombre_completo: string } | null;

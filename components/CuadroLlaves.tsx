@@ -31,6 +31,7 @@ interface CuadroLlavesProps {
   isAdmin: boolean;
   onCargarResultado?: (partido: PartidoLlave) => void;
   onProgramarPartido?: (partido: PartidoLlave) => void;
+  onSuspenderPorLluvia?: (partido: PartidoLlave) => void;
 }
 
 interface LineaLlave {
@@ -95,6 +96,7 @@ function aDatosTarjeta(partido: PartidoLlave): DatosPartidoTarjeta {
     ganador_id: partido.ganador_id,
     fecha_programada: partido.fecha_programada,
     cancha: partido.cancha ?? null,
+    suspendido_lluvia: partido.suspendido_lluvia,
     jugador_1: partido.jugador_1,
     jugador_2: partido.jugador_2,
   };
@@ -106,6 +108,7 @@ export function CuadroLlaves({
   isAdmin,
   onCargarResultado,
   onProgramarPartido,
+  onSuspenderPorLluvia,
 }: CuadroLlavesProps) {
   const marcoRef = useRef<HTMLDivElement>(null);
   const nodosRef = useRef(new Map<string, HTMLDivElement>());
@@ -257,6 +260,11 @@ export function CuadroLlaves({
                       onProgramarPartido={
                         onProgramarPartido
                           ? () => onProgramarPartido(partido)
+                          : undefined
+                      }
+                      onSuspenderPorLluvia={
+                        onSuspenderPorLluvia
+                          ? () => onSuspenderPorLluvia(partido)
                           : undefined
                       }
                     />

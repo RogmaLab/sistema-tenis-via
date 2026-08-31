@@ -1,6 +1,6 @@
 "use client";
 
-import { Calendar, Check, Pencil } from "lucide-react";
+import { Calendar, Check, CloudRain, Pencil } from "lucide-react";
 import { formatProgramacionPartido } from "@/lib/datetime";
 import { BadgeEnCancha, estaEnCancha } from "@/components/BadgeEnCancha";
 
@@ -11,6 +11,7 @@ export interface DatosPartidoTarjeta {
   ganador_id: string | null;
   fecha_programada: string | null;
   cancha: string | null;
+  suspendido_lluvia?: boolean;
   jugador_1: { id?: string; nombre_completo: string } | null;
   jugador_2: { id?: string; nombre_completo: string } | null;
 }
@@ -26,6 +27,7 @@ interface TarjetaPartidoTenisProps {
   cardRef?: (el: HTMLDivElement | null) => void;
   onCargarResultado?: () => void;
   onProgramarPartido?: () => void;
+  onSuspenderPorLluvia?: () => void;
 }
 
 function etiquetaCasillero(
@@ -62,18 +64,24 @@ function BadgeProgramacion({
   cancha,
   estado,
   ambosJugadores,
+  suspendidoLluvia,
 }: {
   fecha: string | null;
   cancha: string | null;
   estado: string;
   ambosJugadores: boolean;
+  suspendidoLluvia?: boolean;
 }) {
   const pendiente = estado === "Pendiente";
   const enCancha = estaEnCancha({ fechaProgramada: fecha, estado });
   const tieneHorario = Boolean(fecha || cancha);
   const mostrarPendiente = pendiente && ambosJugadores && !tieneHorario;
+  const mostrarSuspendido =
+    Boolean(suspendidoLluvia) && pendiente && ambosJugadores && !tieneHorario;
 
-  if (!tieneHorario && !enCancha && !mostrarPendiente) return null;
+  if (!tieneHorario && !enCancha && !mostrarPendiente && !mostrarSuspendido) {
+    return null;
+  }
 
   return (
     <div className="tarjeta-programacion flex items-center justify-between gap-2 border-b border-border/70 bg-background/50 px-2.5 py-1.5 text-[10px] font-medium leading-snug text-foreground/75">
@@ -89,7 +97,11 @@ function BadgeProgramacion({
         {cancha ? (
           <span className="tarjeta-programacion-cancha">📍 {cancha}</span>
         ) : null}
-        {mostrarPendiente ? (
+        {mostrarSuspendido ? (
+          <span className="tarjeta-programacion-pendiente text-amber-400">
+            A programar (Suspendido por lluvia)
+          </span>
+        ) : mostrarPendiente ? (
           <span className="tarjeta-programacion-pendiente">A programar</span>
         ) : null}
       </div>
@@ -234,6 +246,7 @@ export function TarjetaPartidoTenis({
   cardRef,
   onCargarResultado,
   onProgramarPartido,
+  onSuspenderPorLluvia,
 }: TarjetaPartidoTenisProps) {
   const finalizado = partido.estado === "Finalizado";
   const pendiente = partido.estado === "Pendiente";
@@ -266,6 +279,12 @@ export function TarjetaPartidoTenis({
     Boolean(partido.jugador_1 && partido.jugador_2);
   const puedeEditar =
     isAdmin && finalizado && !esWO && Boolean(onCargarResultado);
+  const puedeSuspenderPorLluvia =
+    isAdmin &&
+    pendiente &&
+    programado &&
+    Boolean(partido.jugador_1 && partido.jugador_2) &&
+    Boolean(onSuspenderPorLluvia);
 
   return (
     <div ref={cardRef} className="tarjeta-partido-wrap w-full min-w-0 max-w-full">
@@ -279,6 +298,7 @@ export function TarjetaPartidoTenis({
           cancha={partido.cancha}
           estado={partido.estado}
           ambosJugadores={Boolean(partido.jugador_1 && partido.jugador_2)}
+          suspendidoLluvia={partido.suspendido_lluvia}
         />
 
         {(etiqueta || (pendiente || finalizado)) && etiqueta ? (
@@ -325,11 +345,13 @@ export function TarjetaPartidoTenis({
           esPlaceholder={esTextoPlaceholder(j2Nombre)}
         />
 
-        {isAdmin && (puedeProgramar || puedeCargar || puedeEditar) ? (
+        {isAdmin &&
+        (puedeProgramar || puedeCargar || puedeEditar || puedeSuspenderPorLluvia) ? (
           <div
             data-export-hide
-            className="flex gap-1.5 border-t border-[#3f3f46] p-1.5 print:hidden"
+            className="flex flex-col gap-1.5 border-t border-[#3f3f46] p-1.5 print:hidden"
           >
+            <div className="flex gap-1.5">
             {puedeProgramar && onProgramarPartido ? (
               <button
                 type="button"
@@ -348,6 +370,17 @@ export function TarjetaPartidoTenis({
               >
                 <Pencil size={12} strokeWidth={2.25} />
                 {pendiente ? "Cargar Resultado" : "Editar Resultado"}
+              </button>
+            ) : null}
+            </div>
+            {puedeSuspenderPorLluvia ? (
+              <button
+                type="button"
+                onClick={onSuspenderPorLluvia}
+                className="inline-flex min-h-8 w-full items-center justify-center gap-1 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[10px] font-semibold text-amber-400 transition hover:bg-amber-500/20"
+              >
+                <CloudRain size={12} strokeWidth={2.25} />
+                Suspendido por lluvia
               </button>
             ) : null}
           </div>

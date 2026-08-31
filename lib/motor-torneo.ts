@@ -1495,6 +1495,9 @@ export async function guardarProgramacionPartido(params: {
     .update({
       cancha: params.cancha,
       fecha_programada: params.fecha_programada,
+      ...(params.fecha_programada && params.cancha
+        ? { suspendido_lluvia: false }
+        : {}),
     })
     .eq("id", params.partido_id);
 

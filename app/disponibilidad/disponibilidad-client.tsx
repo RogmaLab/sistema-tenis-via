@@ -131,8 +131,8 @@ export function DisponibilidadClient() {
                 </h2>
                 <p className="mx-auto mt-2 max-w-md text-sm text-foreground/60">
                   La organización todavía no confirmó las canchas y horarios
-                  del fin de semana. Cuando Stefano publique la configuración,
-                  vas a poder indicar en qué bloques podés jugar.
+                  del fin de semana. Cuando publique la configuración, vas a
+                  poder indicar en qué bloques podés jugar.
                 </p>
               </div>
             ) : (

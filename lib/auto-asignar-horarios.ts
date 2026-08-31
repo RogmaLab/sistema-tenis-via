@@ -25,6 +25,7 @@ export interface PartidoParaAsignar {
   jugador_2_id: string | null;
   fecha_programada: string | null;
   cancha: string | null;
+  suspendido_lluvia?: boolean;
   jugador_1_disponibilidad?: BloqueHorarioJugador[];
   jugador_2_disponibilidad?: BloqueHorarioJugador[];
 }
@@ -217,6 +218,9 @@ export function autoAsignarHorarios(params: {
       return true;
     })
     .sort((a, b) => {
+      const prioLluvia =
+        Number(Boolean(b.suspendido_lluvia)) - Number(Boolean(a.suspendido_lluvia));
+      if (prioLluvia !== 0) return prioLluvia;
       const porFase = prioridadPartido(a) - prioridadPartido(b);
       if (porFase !== 0) return porFase;
       const catA = a.categoria ?? "";

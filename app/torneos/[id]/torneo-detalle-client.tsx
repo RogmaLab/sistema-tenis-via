@@ -84,6 +84,7 @@ import {
   type InscripcionPago,
 } from "@/lib/inscripciones-pago";
 import { ModalInscripcionPago } from "@/components/ModalInscripcionPago";
+import { suspenderPartidoPorLluvia } from "@/lib/suspender-partido-lluvia";
 import { useAuth } from "@/components/auth-provider";
 
 // Fila de "partidos" con jugador_1 / jugador_2 embebidos vía sus FKs.
@@ -99,6 +100,7 @@ interface PartidoConJugadores {
   categoria: string | null;
   cancha: string | null;
   fecha_programada: string | null;
+  suspendido_lluvia?: boolean;
   siguiente_partido_id: string | null;
   jugador_1: { id: string; nombre_completo: string } | null;
   jugador_2: { id: string; nombre_completo: string } | null;
@@ -168,6 +170,7 @@ export function TorneoDetalleClient({
 
   // Estados para sistema de inscripción con pago
   const [jugadorId, setJugadorId] = useState<string | null>(null);
+  const [jugadorNombre, setJugadorNombre] = useState<string>("");
   const [inscripcionPago, setInscripcionPago] = useState<InscripcionPago | null>(null);
   const [modalInscripcionPagoAbierto, setModalInscripcionPagoAbierto] = useState(false);
   const [partidoProgramando, setPartidoProgramando] =
@@ -253,16 +256,18 @@ export function TorneoDetalleClient({
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
       setJugadorId(null);
+      setJugadorNombre("");
       return;
     }
     
     const { data } = await supabase
       .from("jugadores")
-      .select("id")
+      .select("id, nombre_completo")
       .eq("user_id", user.id)
       .maybeSingle();
     
     setJugadorId(data?.id ?? null);
+    setJugadorNombre(data?.nombre_completo ?? "");
   }, [supabase]);
 
   // Cargar inscripción con pago del jugador
@@ -954,6 +959,28 @@ export function TorneoDetalleClient({
     await cargarPartidos();
   }
 
+  async function handleSuspenderPorLluvia(partido: PartidoConJugadores) {
+    if (!isAdmin) return;
+
+    const confirmado = window.confirm(
+      `¿Suspender por lluvia el partido "${partido.jugador_1?.nombre_completo ?? "?"} vs ${partido.jugador_2?.nombre_completo ?? "?"}"?\n\nSe quitará el horario y cancha asignados. El partido quedará prioritario para reprogramar el próximo fin de semana.`
+    );
+    if (!confirmado) return;
+
+    try {
+      await suspenderPartidoPorLluvia(partido.id);
+      toast.success("Partido suspendido por lluvia. Quedó pendiente de reprogramación.");
+      await cargarPartidos();
+      router.refresh();
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "No se pudo suspender el partido."
+      );
+    }
+  }
+
   async function handleExportarCuadroJpg() {
     const nodo = cuadroExportRef.current;
     if (!nodo) {
@@ -1159,7 +1186,7 @@ export function TorneoDetalleClient({
                     </div>
                     {inscripcionPago.estado_pago === "pendiente" ? (
                       <p className="text-sm text-foreground/60">
-                        El administrador verificará tu pago en breve.
+                        La organización verificará tu pago en breve.
                       </p>
                     ) : null}
                   </div>
@@ -1448,6 +1475,14 @@ export function TorneoDetalleClient({
                       }
                     : undefined
                 }
+                onSuspenderPorLluvia={
+                  isAdmin
+                    ? (partido) => {
+                        const original = partidos.find((p) => p.id === partido.id);
+                        if (original) void handleSuspenderPorLluvia(original);
+                      }
+                    : undefined
+                }
               />
             ))}
 
@@ -1637,6 +1672,16 @@ export function TorneoDetalleClient({
                               (partido) => partido.id === card.id
                             );
                             if (original) setPartidoProgramando(original);
+                          }
+                        : undefined
+                    }
+                    onSuspenderPorLluvia={
+                      isAdmin
+                        ? (card) => {
+                            const original = partidos.find(
+                              (partido) => partido.id === card.id
+                            );
+                            if (original) void handleSuspenderPorLluvia(original);
                           }
                         : undefined
                     }
@@ -2027,7 +2072,9 @@ export function TorneoDetalleClient({
           torneoId={torneo.id}
           torneoNombre={torneo.nombre}
           jugadorId={jugadorId}
+          jugadorNombre={jugadorNombre}
           precioInscripcion={torneo.precio_inscripcion ?? 0}
+          aceptaEfectivo={torneo.acepta_efectivo ?? true}
           aliasCbu={
             torneo.datos_pago_alias_cbu ?? torneo.datos_pago_texto ?? null
           }

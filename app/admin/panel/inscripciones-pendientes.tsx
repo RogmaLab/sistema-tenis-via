@@ -10,6 +10,19 @@ import {
   type InscripcionPago,
 } from "@/lib/inscripciones-pago";
 import { formatFecha } from "@/lib/datetime";
+import { etiquetaMedioPago } from "@/lib/inscripciones-precio";
+
+function normalizarNombre(nombre: string) {
+  return nombre.trim().toLocaleLowerCase("es-AR");
+}
+
+function titularDifiereDelJugador(
+  nombreJugador: string | undefined,
+  titularPago: string | null | undefined
+) {
+  if (!titularPago?.trim() || !nombreJugador?.trim()) return false;
+  return normalizarNombre(nombreJugador) !== normalizarNombre(titularPago);
+}
 
 export function InscripcionesPendientesTab() {
   const [inscripciones, setInscripciones] = useState<InscripcionPago[]>([]);
@@ -47,48 +60,44 @@ export function InscripcionesPendientesTab() {
 
     setProcesando(inscripcion.id);
     try {
-      const supabase = createClient();
-
-      // 1. Aprobar la inscripción
-      await actualizarEstadoInscripcion(supabase, {
-        inscripcionId: inscripcion.id,
-        estado: "aprobado",
+      const response = await fetch("/api/inscripciones/aprobar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ inscripcionId: inscripcion.id }),
       });
 
-      // 2. ✅ NUEVA VALIDACIÓN: Verificar si ya está inscrito ANTES de insertar
-      const { data: yaInscrito } = await supabase
-        .from("torneo_jugadores")
-        .select("id")
-        .eq("torneo_id", inscripcion.torneo_id)
-        .eq("jugador_id", inscripcion.jugador_id)
-        .maybeSingle();
+      const payload = (await response.json()) as {
+        ok?: boolean;
+        error?: string;
+        yaInscritoEnTorneo?: boolean;
+        nombreJugador?: string;
+        correoEnviado?: boolean;
+        errorCorreo?: string;
+      };
 
-      // 3. Solo inscribir si NO está ya en el torneo
-      if (!yaInscrito) {
-        const categoriaJugador = inscripcion.jugador.categoria || "3ra";
-        
-        const { error: errorInscripcion } = await supabase
-          .from("torneo_jugadores")
-          .insert({
-            torneo_id: inscripcion.torneo_id,
-            jugador_id: inscripcion.jugador_id,
-            categoria: categoriaJugador,
-            clasificado: false,
-          });
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error || "No se pudo aprobar el pago.");
+      }
 
-        if (errorInscripcion) {
-          throw new Error(errorInscripcion.message);
-        }
+      const nombre = payload.nombreJugador ?? inscripcion.jugador.nombre_completo;
 
+      if (payload.yaInscritoEnTorneo) {
         toast.success(
-          `Pago aprobado. ${inscripcion.jugador.nombre_completo} está inscripto al torneo.`,
+          `Pago aprobado. ${nombre} ya estaba inscripto al torneo.`,
           { duration: 5000 }
         );
       } else {
-        // Ya estaba inscrito (posible doble click o race condition)
-        toast.success(
-          `Pago aprobado. ${inscripcion.jugador.nombre_completo} ya estaba inscripto al torneo.`,
-          { duration: 5000 }
+        toast.success(`Pago aprobado. ${nombre} está inscripto al torneo.`, {
+          duration: 5000,
+        });
+      }
+
+      if (payload.correoEnviado) {
+        toast.message("Correo de confirmación enviado al jugador.");
+      } else if (payload.errorCorreo) {
+        toast.message(
+          "La inscripción se aprobó, pero no se pudo enviar el correo de confirmación.",
+          { duration: 6000 }
         );
       }
 
@@ -166,7 +175,16 @@ export function InscripcionesPendientesTab() {
         </p>
       </div>
 
-      {inscripciones.map((inscripcion) => (
+      {inscripciones.map((inscripcion) => {
+        const nombreJugador =
+          inscripcion.jugador?.nombre_completo ?? "Sin nombre";
+        const titularPago = inscripcion.titular_pago?.trim() || null;
+        const esEfectivo = (inscripcion.medio_pago ?? "transferencia") === "efectivo";
+        const titularDistinto =
+          !esEfectivo &&
+          titularDifiereDelJugador(nombreJugador, titularPago);
+
+        return (
         <div
           key={inscripcion.id}
           className="rounded-2xl border border-border bg-surface p-4 sm:p-5"
@@ -176,7 +194,7 @@ export function InscripcionesPendientesTab() {
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <p className="text-sm font-semibold text-foreground">
-                    {inscripcion.jugador?.nombre_completo ?? "Sin nombre"}
+                    Inscripto: {nombreJugador}
                   </p>
                   <p className="mt-1 text-xs text-foreground/60">
                     {inscripcion.torneo?.nombre ?? "Sin torneo"} •{" "}
@@ -195,7 +213,68 @@ export function InscripcionesPendientesTab() {
                 ) : null}
               </div>
 
-              <div className="mt-2 space-y-1">
+              <div className="mt-3 space-y-2">
+                <div
+                  className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${
+                    esEfectivo
+                      ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400"
+                      : "border-border bg-background text-foreground/70"
+                  }`}
+                >
+                  {esEfectivo ? "💵" : "🏦"}{" "}
+                  {etiquetaMedioPago(inscripcion.medio_pago)}
+                </div>
+
+                {esEfectivo ? (
+                  <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3 py-2.5">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-emerald-400">
+                      Modalidad elegida
+                    </p>
+                    <p className="mt-0.5 text-sm font-medium text-emerald-100">
+                      Abonará en efectivo en el club (10% off)
+                    </p>
+                    <p className="mt-1 text-xs text-emerald-300/80">
+                      Validá el pago cuando reciba el dinero en persona.
+                    </p>
+                  </div>
+                ) : titularPago ? (
+                  <div
+                    className={`rounded-xl border px-3 py-2.5 ${
+                      titularDistinto
+                        ? "border-amber-500/40 bg-amber-500/10"
+                        : "border-border bg-background"
+                    }`}
+                  >
+                    <p
+                      className={`text-xs font-semibold uppercase tracking-wide ${
+                        titularDistinto
+                          ? "text-amber-400"
+                          : "text-foreground/45"
+                      }`}
+                    >
+                      Titular de la transferencia
+                    </p>
+                    <p
+                      className={`mt-0.5 text-sm font-medium ${
+                        titularDistinto ? "text-amber-100" : "text-foreground"
+                      }`}
+                    >
+                      {titularDistinto
+                        ? `Pagó desde cuenta de: ${titularPago}`
+                        : titularPago}
+                    </p>
+                    {titularDistinto ? (
+                      <p className="mt-1 text-xs text-amber-400/80">
+                        Difiere del jugador inscripto — verificá el home banking
+                        con este titular.
+                      </p>
+                    ) : null}
+                  </div>
+                ) : (
+                  <p className="text-xs text-foreground/45">
+                    Sin titular de transferencia registrado.
+                  </p>
+                )}
                 <p className="text-xs text-foreground/50">
                   Fecha de inscripción:{" "}
                   {formatFecha(inscripcion.fecha_inscripcion)}
@@ -223,7 +302,8 @@ export function InscripcionesPendientesTab() {
             </div>
           </div>
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { MedioPagoInscripcion } from "@/lib/inscripciones-precio";
 
 export type EstadoPago = "pendiente" | "aprobado" | "rechazado";
 
@@ -10,6 +11,8 @@ export interface InscripcionPago {
   fecha_inscripcion: string;
   fecha_actualizacion: string;
   notas_admin: string | null;
+  titular_pago: string | null;
+  medio_pago: MedioPagoInscripcion;
   created_at: string;
   // Relaciones
   jugador?: {
@@ -31,12 +34,23 @@ export async function crearInscripcion(
   params: {
     torneoId: string;
     jugadorId: string;
+    medioPago: MedioPagoInscripcion;
+    titularPago?: string | null;
   }
 ): Promise<void> {
+  const medioPago = params.medioPago;
+  const titularPago = params.titularPago?.trim() ?? "";
+
+  if (medioPago === "transferencia" && !titularPago) {
+    throw new Error("Indicá el titular de la cuenta desde la que transferiste.");
+  }
+
   const { error } = await supabase.from("inscripciones_torneo").insert({
     torneo_id: params.torneoId,
     jugador_id: params.jugadorId,
     estado_pago: "pendiente",
+    medio_pago: medioPago,
+    titular_pago: medioPago === "transferencia" ? titularPago : null,
   });
 
   if (error) {
@@ -86,6 +100,8 @@ export async function fetchInscripcionesPendientes(
       fecha_inscripcion,
       fecha_actualizacion,
       notas_admin,
+      titular_pago,
+      medio_pago,
       created_at,
       jugador:jugador_id (
         id,
@@ -126,6 +142,8 @@ export async function fetchInscripcionesTorneo(
       fecha_inscripcion,
       fecha_actualizacion,
       notas_admin,
+      titular_pago,
+      medio_pago,
       created_at,
       jugador:jugador_id (
         id,

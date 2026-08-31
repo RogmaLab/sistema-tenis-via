@@ -145,7 +145,7 @@ export async function ejecutarAutoAsignacion(params: {
     .from("partidos")
     .select(
       `id, estado, tipo_fase, fase, ronda, numero_slot, categoria, 
-       jugador_1_id, jugador_2_id, fecha_programada, cancha,
+       jugador_1_id, jugador_2_id, fecha_programada, cancha, suspendido_lluvia,
        jugador_1:jugador_1_id(disponibilidad_horaria),
        jugador_2:jugador_2_id(disponibilidad_horaria)`
     )
@@ -165,6 +165,7 @@ export async function ejecutarAutoAsignacion(params: {
     jugador_2_id: p.jugador_2_id,
     fecha_programada: p.fecha_programada,
     cancha: p.cancha,
+    suspendido_lluvia: p.suspendido_lluvia ?? false,
     jugador_1_disponibilidad: p.jugador_1?.disponibilidad_horaria ?? [],
     jugador_2_disponibilidad: p.jugador_2?.disponibilidad_horaria ?? [],
   })) as PartidoParaAsignar[];
@@ -212,6 +213,7 @@ export async function ejecutarAutoAsignacion(params: {
         .update({
           cancha: asignacion.cancha,
           fecha_programada: asignacion.fecha_programada,
+          suspendido_lluvia: false,
         })
         .eq("id", asignacion.id)
     )

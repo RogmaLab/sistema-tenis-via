@@ -22,6 +22,7 @@ interface PartidoClasificacionVista {
   ganador_id: string | null;
   cancha: string | null;
   fecha_programada: string | null;
+  suspendido_lluvia?: boolean;
   jugador_1: { id: string; nombre_completo: string } | null;
   jugador_2: { id: string; nombre_completo: string } | null;
 }
@@ -39,6 +40,7 @@ interface FaseClasificacionTabProps {
   onGuardados: () => Promise<void>;
   onCargarResultado?: (partido: PartidoClasificacionVista) => void;
   onProgramarPartido?: (partido: PartidoClasificacionVista) => void;
+  onSuspenderPorLluvia?: (partido: PartidoClasificacionVista) => void;
 }
 
 function etiquetaSlot(slotId: string, inscriptos: Jugador[]) {
@@ -77,6 +79,7 @@ export function FaseClasificacionTab({
   onGuardados,
   onCargarResultado,
   onProgramarPartido,
+  onSuspenderPorLluvia,
 }: FaseClasificacionTabProps) {
   const [vistaFijada, setVistaFijada] = useState(false);
   const [isConfirmando, setIsConfirmando] = useState(false);
@@ -292,6 +295,7 @@ export function FaseClasificacionTab({
                     ganador_id: cruce.partido.ganador_id,
                     fecha_programada: cruce.partido.fecha_programada,
                     cancha: cruce.partido.cancha,
+                    suspendido_lluvia: cruce.partido.suspendido_lluvia,
                     jugador_1: cruce.partido.jugador_1,
                     jugador_2: cruce.partido.jugador_2,
                   }}
@@ -307,6 +311,11 @@ export function FaseClasificacionTab({
                   onProgramarPartido={
                     onProgramarPartido
                       ? () => onProgramarPartido(cruce.partido!)
+                      : undefined
+                  }
+                  onSuspenderPorLluvia={
+                    onSuspenderPorLluvia
+                      ? () => onSuspenderPorLluvia(cruce.partido!)
                       : undefined
                   }
                 />
@@ -398,7 +407,7 @@ export function FaseClasificacionTab({
           </div>
         ) : (
           <p className="mt-4 text-sm text-foreground/40">
-            El administrador todavía no sorteó esta categoría.
+            La organización todavía no sorteó esta categoría.
           </p>
         )}
       </section>

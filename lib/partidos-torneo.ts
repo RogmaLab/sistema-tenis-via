@@ -20,13 +20,14 @@ export interface PartidoTorneoRow {
   categoria: string | null;
   cancha: string | null;
   fecha_programada: string | null;
+  suspendido_lluvia?: boolean;
   siguiente_partido_id: string | null;
   jugador_1: { id: string; nombre_completo: string } | null;
   jugador_2: { id: string; nombre_completo: string } | null;
 }
 
 const SELECT_PARTIDOS =
-  "id, resultado, estado, ganador_id, fase, tipo_fase, ronda, numero_slot, categoria, cancha, fecha_programada, siguiente_partido_id, jugador_1:jugador_1_id ( id, nombre_completo ), jugador_2:jugador_2_id ( id, nombre_completo )";
+  "id, resultado, estado, ganador_id, fase, tipo_fase, ronda, numero_slot, categoria, cancha, fecha_programada, suspendido_lluvia, siguiente_partido_id, jugador_1:jugador_1_id ( id, nombre_completo ), jugador_2:jugador_2_id ( id, nombre_completo )";
 
 export function normalizarCategoriaPartido(categoria: string | null | undefined) {
   return (categoria ?? "").trim();

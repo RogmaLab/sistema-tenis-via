@@ -8,6 +8,9 @@ alter table public.torneos
   add column if not exists datos_pago_alias_cbu text,
   add column if not exists datos_pago_titular text;
 
+alter table public.torneos
+  add column if not exists acepta_efectivo boolean not null default true;
+
 comment on column public.torneos.precio_inscripcion is
   'Precio de inscripción al torneo (0 = gratuito)';
 
@@ -27,6 +30,9 @@ create table if not exists public.inscripciones_torneo (
   fecha_inscripcion timestamptz not null default now(),
   fecha_actualizacion timestamptz not null default now(),
   notas_admin text,
+  titular_pago text,
+  medio_pago text not null default 'transferencia'
+    check (medio_pago in ('transferencia', 'efectivo')),
   created_at timestamptz not null default now(),
   
   -- Constraint: un jugador solo puede tener una inscripción por torneo

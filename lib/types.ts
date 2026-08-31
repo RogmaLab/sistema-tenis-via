@@ -64,6 +64,7 @@ export interface Torneo {
   precio_inscripcion?: number | null; // Precio de inscripción (0 = gratuito)
   datos_pago_alias_cbu?: string | null;
   datos_pago_titular?: string | null;
+  acepta_efectivo?: boolean;
   /** @deprecated Usar datos_pago_alias_cbu y datos_pago_titular */
   datos_pago_texto?: string | null;
   created_at: string;
@@ -211,6 +212,7 @@ export interface Partido {
   categoria: string | null;
   cancha: string | null;
   fecha_programada: string | null; // timestamptz ISO
+  suspendido_lluvia?: boolean;
   siguiente_partido_id: string | null;
   created_at: string;
 }

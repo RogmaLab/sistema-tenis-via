@@ -1,4 +1,5 @@
 import type { BloqueHorario } from "@/lib/types";
+import { BLOQUES_HORARIOS } from "@/lib/types";
 import type { DiaFinDeSemana } from "@/lib/disponibilidad-canchas";
 
 /**
@@ -105,5 +106,33 @@ export function tienenDisponibilidadComun(
   return (
     estaDisponibleEnHora(disp1, dia, hora) &&
     estaDisponibleEnHora(disp2, dia, hora)
+  );
+}
+
+function minutosDeHoraLocal(hora: string) {
+  const [hh, mm] = hora.split(":").map(Number);
+  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return NaN;
+  return hh * 60 + mm;
+}
+
+function ventanaSolapaBloque(
+  ventana: { dia: DiaFinDeSemana; hora_inicio: string; hora_fin: string },
+  bloque: BloqueHorario
+): boolean {
+  const info = infoBloque(bloque);
+  if (ventana.dia !== info.dia) return false;
+  const inicio = minutosDeHoraLocal(ventana.hora_inicio);
+  const fin = minutosDeHoraLocal(ventana.hora_fin);
+  if (!Number.isFinite(inicio) || !Number.isFinite(fin)) return false;
+  return inicio < info.horaFin && info.horaInicio < fin;
+}
+
+/** Bloques horarios de jugador habilitados según las ventanas que configuró el admin. */
+export function bloquesHabilitadosDesdeVentanas(
+  ventanas: { dia: DiaFinDeSemana; hora_inicio: string; hora_fin: string }[]
+): BloqueHorario[] {
+  if (ventanas.length === 0) return [];
+  return BLOQUES_HORARIOS.filter((bloque) =>
+    ventanas.some((ventana) => ventanaSolapaBloque(ventana, bloque))
   );
 }

@@ -14,11 +14,15 @@ import {
 
 interface SelectorDisponibilidadProps {
   disponibilidadInicial: BloqueHorario[];
+  bloquesHabilitados?: BloqueHorario[];
+  torneoNombre?: string | null;
   onGuardar: (disponibilidad: BloqueHorario[]) => Promise<void>;
 }
 
 export function SelectorDisponibilidad({
   disponibilidadInicial,
+  bloquesHabilitados,
+  torneoNombre,
   onGuardar,
 }: SelectorDisponibilidadProps) {
   const [seleccionados, setSeleccionados] = useState<Set<BloqueHorario>>(
@@ -44,7 +48,7 @@ export function SelectorDisponibilidad({
   const deadlineFormateado = useMemo(() => formatearDeadlineCompleto(), []);
 
   const toggleBloque = (bloque: BloqueHorario) => {
-    if (!puedeModificar) return; // No permitir cambios si pasó el deadline
+    if (!puedeModificar || !bloquesPermitidos.includes(bloque)) return;
     
     setSeleccionados((prev) => {
       const nuevo = new Set(prev);
@@ -59,7 +63,7 @@ export function SelectorDisponibilidad({
 
   const seleccionarTodos = () => {
     if (!puedeModificar) return;
-    setSeleccionados(new Set(BLOQUES_HORARIOS));
+    setSeleccionados(new Set(bloquesPermitidos));
   };
 
   const limpiarTodo = () => {
@@ -79,9 +83,17 @@ export function SelectorDisponibilidad({
     }
   };
 
-  const bloquesSabado = BLOQUES_HORARIOS.filter((b) => b.startsWith("sabado_"));
-  const bloquesDomingo = BLOQUES_HORARIOS.filter((b) => b.startsWith("domingo_"));
+  const bloquesPermitidos = useMemo(() => {
+    if (bloquesHabilitados && bloquesHabilitados.length > 0) {
+      return bloquesHabilitados;
+    }
+    return BLOQUES_HORARIOS;
+  }, [bloquesHabilitados]);
+
+  const bloquesSabado = bloquesPermitidos.filter((b) => b.startsWith("sabado_"));
+  const bloquesDomingo = bloquesPermitidos.filter((b) => b.startsWith("domingo_"));
   const sinConfigurar = seleccionados.size === 0;
+  const hayBloquesHabilitados = bloquesPermitidos.length > 0;
 
   return (
     <div
@@ -118,8 +130,8 @@ export function SelectorDisponibilidad({
                 </>
               ) : (
                 <p className="text-xs text-foreground/60">
-                  {seleccionados.size === BLOQUES_HORARIOS.length
-                    ? "Disponible en todos los horarios"
+                  {seleccionados.size === bloquesPermitidos.length
+                    ? "Disponible en todos los horarios habilitados"
                     : `${seleccionados.size} ${seleccionados.size === 1 ? "bloque seleccionado" : "bloques seleccionados"}`}
                 </p>
               )}
@@ -137,6 +149,22 @@ export function SelectorDisponibilidad({
 
       {expandido ? (
         <div className="border-t border-border px-4 py-4">
+          {torneoNombre ? (
+            <p className="mb-3 text-xs text-foreground/50">
+              Fin de semana de{" "}
+              <span className="font-medium text-foreground/70">
+                {torneoNombre}
+              </span>
+            </p>
+          ) : null}
+
+          {!hayBloquesHabilitados ? (
+            <p className="rounded-lg border border-border bg-background px-4 py-3 text-sm text-foreground/60">
+              No hay bloques horarios habilitados todavía. Volvé a intentar más
+              tarde.
+            </p>
+          ) : null}
+
           {/* Banner de advertencia si pasó el deadline */}
           {!puedeModificar ? (
             <div className="mb-4 flex items-start gap-3 rounded-lg border border-orange-500/30 bg-orange-500/10 px-4 py-3">
@@ -155,7 +183,8 @@ export function SelectorDisponibilidad({
               <button
                 type="button"
                 onClick={seleccionarTodos}
-                className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-xs font-medium text-foreground transition hover:border-accent hover:text-accent"
+                disabled={!hayBloquesHabilitados}
+                className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-xs font-medium text-foreground transition hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Seleccionar todos
               </button>
@@ -170,6 +199,7 @@ export function SelectorDisponibilidad({
           )}
 
           <div className="space-y-4">
+            {bloquesSabado.length > 0 ? (
             <div>
               <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-foreground/60">
                 Sábado {fechas.sabado}
@@ -208,7 +238,9 @@ export function SelectorDisponibilidad({
                 })}
               </div>
             </div>
+            ) : null}
 
+            {bloquesDomingo.length > 0 ? (
             <div>
               <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-foreground/60">
                 Domingo {fechas.domingo}
@@ -247,6 +279,7 @@ export function SelectorDisponibilidad({
                 })}
               </div>
             </div>
+            ) : null}
           </div>
 
           <div className="mt-4 flex gap-3">
@@ -260,7 +293,7 @@ export function SelectorDisponibilidad({
             <button
               type="button"
               onClick={handleGuardar}
-              disabled={guardando || !puedeModificar}
+              disabled={guardando || !puedeModificar || !hayBloquesHabilitados}
               className="flex-1 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-hover active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
             >
               {guardando ? "Guardando..." : "Guardar disponibilidad"}
@@ -270,10 +303,12 @@ export function SelectorDisponibilidad({
           <p className="mt-3 text-xs text-foreground/40">
             {puedeModificar ? (
               <>
-                <strong>Nota:</strong> El sistema de auto-asignación de horarios usará
-                esta información para programar tus partidos solo en los bloques que
-                seleccionaste. Si no seleccionás ninguno, se asume que podés jugar en
-                cualquier horario. El plazo para modificar cierra el {deadlineFormateado}.
+                <strong>Nota:</strong> Solo podés elegir los bloques que la
+                organización habilitó para este fin de semana. El sistema de
+                auto-asignación usará esta información para programar tus
+                partidos. Si no seleccionás ninguno, se asume que podés jugar en
+                cualquier horario habilitado. El plazo para modificar cierra el{" "}
+                {deadlineFormateado}.
               </>
             ) : (
               <>

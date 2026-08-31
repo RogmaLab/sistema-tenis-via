@@ -5,6 +5,10 @@ import {
   type VentanaCancha,
 } from "@/lib/disponibilidad-canchas";
 import {
+  bloquesHabilitadosDesdeVentanas,
+} from "@/lib/disponibilidad-jugadores";
+import type { BloqueHorario } from "@/lib/types";
+import {
   autoAsignarHorarios,
   fechasProximoFinDeSemana,
   generarBloquesHorarios,
@@ -20,7 +24,7 @@ export async function fetchConfigProgramacion(
   const [configResult, ventanasResult] = await Promise.all([
     supabase
       .from("config_programacion_torneo")
-      .select("torneo_id, duracion_minutos")
+      .select("torneo_id, duracion_minutos, disponibilidad_abierta, disponibilidad_habilitada_at")
       .eq("torneo_id", torneoId)
       .maybeSingle(),
     supabase
@@ -53,19 +57,40 @@ export async function fetchConfigProgramacion(
       ? 60
       : 90) as 60 | 90,
     ventanas,
+    disponibilidad_abierta: configResult.data?.disponibilidad_abierta ?? false,
+    disponibilidad_habilitada_at:
+      configResult.data?.disponibilidad_habilitada_at ?? null,
   };
 }
 
 export async function guardarConfigProgramacion(
-  config: ConfigProgramacionTorneo
+  config: ConfigProgramacionTorneo,
+  opciones?: { preservarEstadoApertura?: boolean }
 ): Promise<void> {
   const supabase = createClient();
+
+  let disponibilidadAbierta = config.disponibilidad_abierta ?? false;
+  let disponibilidadHabilitadaAt = config.disponibilidad_habilitada_at ?? null;
+
+  if (opciones?.preservarEstadoApertura) {
+    const { data: actual } = await supabase
+      .from("config_programacion_torneo")
+      .select("disponibilidad_abierta, disponibilidad_habilitada_at")
+      .eq("torneo_id", config.torneo_id)
+      .maybeSingle();
+    if (actual) {
+      disponibilidadAbierta = actual.disponibilidad_abierta ?? false;
+      disponibilidadHabilitadaAt = actual.disponibilidad_habilitada_at ?? null;
+    }
+  }
 
   const { error: errorConfig } = await supabase
     .from("config_programacion_torneo")
     .upsert({
       torneo_id: config.torneo_id,
       duracion_minutos: config.duracion_minutos,
+      disponibilidad_abierta: disponibilidadAbierta,
+      disponibilidad_habilitada_at: disponibilidadHabilitadaAt,
       updated_at: new Date().toISOString(),
     });
   if (errorConfig) throw new Error(errorConfig.message);
@@ -221,4 +246,126 @@ export async function ejecutarAutoAsignacion(params: {
     bloques: bloques.length,
     partidosSinDisponibilidad,
   };
+}
+
+export interface EstadoDisponibilidadJugadores {
+  abierta: boolean;
+  torneoId: string | null;
+  torneoNombre: string | null;
+  bloquesHabilitados: BloqueHorario[];
+}
+
+export async function fetchEstadoDisponibilidadParaJugadores(): Promise<EstadoDisponibilidadJugadores> {
+  const supabase = createClient();
+
+  const { data: configAbierta, error } = await supabase
+    .from("config_programacion_torneo")
+    .select("torneo_id, torneos(nombre)")
+    .eq("disponibilidad_abierta", true)
+    .order("disponibilidad_habilitada_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+
+  if (!configAbierta) {
+    return {
+      abierta: false,
+      torneoId: null,
+      torneoNombre: null,
+      bloquesHabilitados: [],
+    };
+  }
+
+  const torneoRaw = configAbierta.torneos as
+    | { nombre: string }
+    | { nombre: string }[]
+    | null;
+  const torneoNombre = Array.isArray(torneoRaw)
+    ? torneoRaw[0]?.nombre ?? null
+    : torneoRaw?.nombre ?? null;
+
+  const config = await fetchConfigProgramacion(configAbierta.torneo_id);
+
+  return {
+    abierta: true,
+    torneoId: configAbierta.torneo_id,
+    torneoNombre,
+    bloquesHabilitados: bloquesHabilitadosDesdeVentanas(config?.ventanas ?? []),
+  };
+}
+
+export async function habilitarDisponibilidadJugadores(
+  config: ConfigProgramacionTorneo
+): Promise<void> {
+  const supabase = createClient();
+  const ahora = new Date().toISOString();
+
+  const { error: errorCerrarOtros } = await supabase
+    .from("config_programacion_torneo")
+    .update({ disponibilidad_abierta: false })
+    .neq("torneo_id", config.torneo_id)
+    .eq("disponibilidad_abierta", true);
+
+  if (errorCerrarOtros) throw new Error(errorCerrarOtros.message);
+
+  const { error: errorConfig } = await supabase
+    .from("config_programacion_torneo")
+    .upsert({
+      torneo_id: config.torneo_id,
+      duracion_minutos: config.duracion_minutos,
+      disponibilidad_abierta: true,
+      disponibilidad_habilitada_at: ahora,
+      updated_at: ahora,
+    });
+
+  if (errorConfig) throw new Error(errorConfig.message);
+
+  const { error: errorBorrar } = await supabase
+    .from("disponibilidad_canchas")
+    .delete()
+    .eq("torneo_id", config.torneo_id);
+  if (errorBorrar) throw new Error(errorBorrar.message);
+
+  if (config.ventanas.length === 0) return;
+
+  const { error: errorInsert } = await supabase
+    .from("disponibilidad_canchas")
+    .insert(
+      config.ventanas.map((ventana) => ({
+        torneo_id: config.torneo_id,
+        dia: ventana.dia,
+        cancha: ventana.cancha,
+        hora_inicio: ventana.hora_inicio,
+        hora_fin: ventana.hora_fin,
+      }))
+    );
+  if (errorInsert) throw new Error(errorInsert.message);
+}
+
+export async function fetchTorneosConConfiguracion(
+  excluirTorneoId?: string
+): Promise<Array<{ id: string; nombre: string }>> {
+  const supabase = createClient();
+
+  const { data: configs, error: errorConfigs } = await supabase
+    .from("config_programacion_torneo")
+    .select("torneo_id");
+
+  if (errorConfigs) throw new Error(errorConfigs.message);
+
+  const ids = (configs ?? [])
+    .map((item) => item.torneo_id)
+    .filter((id) => id !== excluirTorneoId);
+
+  if (ids.length === 0) return [];
+
+  const { data: torneos, error: errorTorneos } = await supabase
+    .from("torneos")
+    .select("id, nombre")
+    .in("id", ids)
+    .order("fecha_inicio", { ascending: false });
+
+  if (errorTorneos) throw new Error(errorTorneos.message);
+  return torneos ?? [];
 }

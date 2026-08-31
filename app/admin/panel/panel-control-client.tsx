@@ -3,8 +3,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   CalendarClock,
+  CheckCircle2,
   Clock,
+  Copy,
   LayoutDashboard,
+  Lock,
   Plus,
   Save,
   Sparkles,
@@ -27,7 +30,9 @@ import { fechasProximoFinDeSemana } from "@/lib/auto-asignar-horarios";
 import {
   ejecutarAutoAsignacion,
   fetchConfigProgramacion,
+  fetchTorneosConConfiguracion,
   guardarConfigProgramacion,
+  habilitarDisponibilidadJugadores,
 } from "@/lib/programacion-canchas";
 import {
   formatFecha,
@@ -108,6 +113,15 @@ export function PanelControlClient() {
   const [guardando, setGuardando] = useState(false);
   const [asignando, setAsignando] = useState(false);
   const [reasignar, setReasignar] = useState(false);
+  const [disponibilidadAbierta, setDisponibilidadAbierta] = useState(false);
+  const [disponibilidadHabilitadaAt, setDisponibilidadHabilitadaAt] = useState<
+    string | null
+  >(null);
+  const [torneosConConfig, setTorneosConConfig] = useState<
+    Array<{ id: string; nombre: string }>
+  >([]);
+  const [reutilizarTorneoId, setReutilizarTorneoId] = useState("");
+  const [habilitando, setHabilitando] = useState(false);
 
   const finDeSemana = useMemo(() => fechasProximoFinDeSemana(), []);
 
@@ -144,6 +158,8 @@ export function PanelControlClient() {
   useEffect(() => {
     if (!torneoId) {
       setDraft(structuredClone(DISPONIBILIDAD_VACIA));
+      setDisponibilidadAbierta(false);
+      setDisponibilidadHabilitadaAt(null);
       return;
     }
     let ignore = false;
@@ -151,10 +167,35 @@ export function PanelControlClient() {
       .then((config) => {
         if (ignore) return;
         setDraft(draftDesdeConfig(config));
+        setDisponibilidadAbierta(config?.disponibilidad_abierta ?? false);
+        setDisponibilidadHabilitadaAt(
+          config?.disponibilidad_habilitada_at ?? null
+        );
       })
       .catch((error: Error) => {
         if (ignore) return;
         toast.error(error.message);
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [torneoId]);
+
+  useEffect(() => {
+    if (!torneoId) {
+      setTorneosConConfig([]);
+      return;
+    }
+    let ignore = false;
+    fetchTorneosConConfiguracion(torneoId)
+      .then((lista) => {
+        if (ignore) return;
+        setTorneosConConfig(lista);
+        setReutilizarTorneoId("");
+      })
+      .catch(() => {
+        if (ignore) return;
+        setTorneosConConfig([]);
       });
     return () => {
       ignore = true;
@@ -167,11 +208,14 @@ export function PanelControlClient() {
       toast.error(errorValidacion);
       return false;
     }
-    await guardarConfigProgramacion({
-      torneo_id: torneoId,
-      duracion_minutos: draft.duracion_minutos,
-      ventanas: ventanasDesdeDraft(draft),
-    });
+    await guardarConfigProgramacion(
+      {
+        torneo_id: torneoId,
+        duracion_minutos: draft.duracion_minutos,
+        ventanas: ventanasDesdeDraft(draft),
+      },
+      { preservarEstadoApertura: true }
+    );
     return true;
   }
 
@@ -187,6 +231,56 @@ export function PanelControlClient() {
       );
     } finally {
       setGuardando(false);
+    }
+  }
+
+  async function handleHabilitarDisponibilidad() {
+    if (!torneoId) return;
+    const errorValidacion = validarDraft(draft);
+    if (errorValidacion) {
+      toast.error(errorValidacion);
+      return;
+    }
+    setHabilitando(true);
+    try {
+      const config = {
+        torneo_id: torneoId,
+        duracion_minutos: draft.duracion_minutos,
+        ventanas: ventanasDesdeDraft(draft),
+      };
+      await habilitarDisponibilidadJugadores(config);
+      setDisponibilidadAbierta(true);
+      setDisponibilidadHabilitadaAt(new Date().toISOString());
+      toast.success(
+        "Disponibilidad confirmada. Los jugadores ya pueden cargar sus horarios."
+      );
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "No se pudo habilitar la disponibilidad."
+      );
+    } finally {
+      setHabilitando(false);
+    }
+  }
+
+  async function handleReutilizarConfig() {
+    if (!reutilizarTorneoId) return;
+    try {
+      const config = await fetchConfigProgramacion(reutilizarTorneoId);
+      if (!config) {
+        toast.error("Ese torneo no tiene configuración guardada.");
+        return;
+      }
+      setDraft(draftDesdeConfig(config));
+      toast.success("Configuración copiada. Revisá los tramos y confirmá.");
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "No se pudo copiar la configuración."
+      );
     }
   }
 
@@ -363,6 +457,69 @@ export function PanelControlClient() {
           otro tramo. Los horarios ya cargados a mano no se pisan, salvo que
           actives reasignar.
         </p>
+
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          {disponibilidadAbierta ? (
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-400">
+              <CheckCircle2 size={14} />
+              Abierta para jugadores
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-orange-500/30 bg-orange-500/10 px-3 py-1 text-xs font-semibold text-orange-400">
+              <Lock size={14} />
+              Cerrada — los jugadores aún no pueden cargar horarios
+            </span>
+          )}
+          {disponibilidadHabilitadaAt ? (
+            <span className="text-xs text-foreground/45">
+              Habilitada el{" "}
+              {new Date(disponibilidadHabilitadaAt).toLocaleString("es-AR", {
+                day: "numeric",
+                month: "short",
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+            </span>
+          ) : null}
+        </div>
+
+        {torneosConConfig.length > 0 ? (
+          <div className="mt-4 rounded-xl border border-border/80 bg-background p-4">
+            <div className="flex items-center gap-2">
+              <Copy size={16} className="text-accent" />
+              <p className="text-sm font-semibold text-foreground">
+                Reutilizar configuración anterior
+              </p>
+            </div>
+            <p className="mt-1 text-xs text-foreground/50">
+              Copiá tramos y canchas de un fin de semana previo para ahorrar
+              tiempo.
+            </p>
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+              <select
+                value={reutilizarTorneoId}
+                onChange={(event) => setReutilizarTorneoId(event.target.value)}
+                className={`${inputClass} sm:flex-1`}
+              >
+                <option value="">Elegir torneo...</option>
+                {torneosConConfig.map((torneo) => (
+                  <option key={torneo.id} value={torneo.id}>
+                    {torneo.nombre}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                disabled={!reutilizarTorneoId}
+                onClick={() => void handleReutilizarConfig()}
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-border px-4 text-sm font-semibold text-foreground transition hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Copy size={16} />
+                Copiar
+              </button>
+            </div>
+          </div>
+        ) : null}
       </section>
 
       <section className="rounded-2xl border border-border bg-surface p-5 sm:p-6">
@@ -535,11 +692,33 @@ export function PanelControlClient() {
           type="button"
           onClick={() => void handleGuardar()}
           disabled={guardando}
-          className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
+          className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-lg border border-border bg-background px-4 py-2.5 text-sm font-semibold text-foreground transition hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-60"
         >
           <Save size={16} />
-          {guardando ? "Guardando..." : "Guardar disponibilidad"}
+          {guardando ? "Guardando..." : "Guardar borrador (solo admin)"}
         </button>
+
+        <div className="mt-6 rounded-xl border border-accent/30 bg-accent/5 p-4">
+          <p className="text-sm font-semibold text-foreground">
+            Publicar para jugadores
+          </p>
+          <p className="mt-1 text-xs text-foreground/55">
+            Cuando confirmes las canchas y horarios del fin de semana, los
+            jugadores podrán marcar en qué bloques pueden jugar. Guardar
+            borrador no abre la carga para ellos.
+          </p>
+          <button
+            type="button"
+            onClick={() => void handleHabilitarDisponibilidad()}
+            disabled={habilitando}
+            className="mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+          >
+            <CheckCircle2 size={16} />
+            {habilitando
+              ? "Habilitando..."
+              : "Confirmar y Habilitar Disponibilidad para Jugadores"}
+          </button>
+        </div>
       </section>
 
       <section className="rounded-2xl border border-border bg-surface p-5 sm:p-6">

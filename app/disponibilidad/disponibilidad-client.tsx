@@ -8,7 +8,9 @@ import { useAuth } from "@/components/auth-provider";
 import { fetchMiJugador } from "@/lib/jugador-vinculado";
 import { SelectorDisponibilidad } from "@/components/SelectorDisponibilidad";
 import { puedeModificarDisponibilidad } from "@/lib/disponibilidad-deadline";
+import { fetchEstadoDisponibilidadParaJugadores } from "@/lib/programacion-canchas";
 import type { Jugador, BloqueHorario } from "@/lib/types";
+import { CalendarClock } from "lucide-react";
 
 export function DisponibilidadClient() {
   const { user, loading } = useAuth();
@@ -16,6 +18,15 @@ export function DisponibilidadClient() {
 
   const [jugador, setJugador] = useState<Jugador | null>(null);
   const [cargando, setCargando] = useState(true);
+  const [estadoDisponibilidad, setEstadoDisponibilidad] = useState<{
+    abierta: boolean;
+    torneoNombre: string | null;
+    bloquesHabilitados: BloqueHorario[];
+  }>({
+    abierta: false,
+    torneoNombre: null,
+    bloquesHabilitados: [],
+  });
 
   const cargar = useCallback(async () => {
     if (!user) {
@@ -24,8 +35,21 @@ export function DisponibilidadClient() {
       return;
     }
     setCargando(true);
-    const data = await fetchMiJugador(supabase, user.id);
+    const [data, estado] = await Promise.all([
+      fetchMiJugador(supabase, user.id),
+      fetchEstadoDisponibilidadParaJugadores().catch(() => ({
+        abierta: false,
+        torneoId: null,
+        torneoNombre: null,
+        bloquesHabilitados: [] as BloqueHorario[],
+      })),
+    ]);
     setJugador(data);
+    setEstadoDisponibilidad({
+      abierta: estado.abierta,
+      torneoNombre: estado.torneoNombre,
+      bloquesHabilitados: estado.bloquesHabilitados,
+    });
     setCargando(false);
   }, [supabase, user]);
 
@@ -36,6 +60,13 @@ export function DisponibilidadClient() {
 
   async function handleGuardarDisponibilidad(disponibilidad: BloqueHorario[]) {
     if (!jugador) return;
+
+    if (!estadoDisponibilidad.abierta) {
+      toast.error(
+        "La organización aún no confirmó las canchas del fin de semana."
+      );
+      throw new Error("Disponibilidad cerrada");
+    }
 
     // Validación del deadline en el cliente
     if (!puedeModificarDisponibilidad()) {
@@ -90,10 +121,28 @@ export function DisponibilidadClient() {
           </div>
         ) : (
           <div className="space-y-6">
-            <SelectorDisponibilidad
-              disponibilidadInicial={jugador.disponibilidad_horaria ?? []}
-              onGuardar={handleGuardarDisponibilidad}
-            />
+            {!estadoDisponibilidad.abierta ? (
+              <div className="rounded-2xl border border-border bg-surface px-6 py-10 text-center">
+                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-accent/10">
+                  <CalendarClock size={28} className="text-accent" />
+                </div>
+                <h2 className="mt-4 text-lg font-semibold text-foreground">
+                  Disponibilidad aún no habilitada
+                </h2>
+                <p className="mx-auto mt-2 max-w-md text-sm text-foreground/60">
+                  La organización todavía no confirmó las canchas y horarios
+                  del fin de semana. Cuando Stefano publique la configuración,
+                  vas a poder indicar en qué bloques podés jugar.
+                </p>
+              </div>
+            ) : (
+              <SelectorDisponibilidad
+                disponibilidadInicial={jugador.disponibilidad_horaria ?? []}
+                bloquesHabilitados={estadoDisponibilidad.bloquesHabilitados}
+                torneoNombre={estadoDisponibilidad.torneoNombre}
+                onGuardar={handleGuardarDisponibilidad}
+              />
+            )}
 
             <div className="rounded-2xl border border-border bg-surface p-5 sm:p-6">
               <h2 className="text-base font-semibold text-foreground">

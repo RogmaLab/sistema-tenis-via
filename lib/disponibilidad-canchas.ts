@@ -14,6 +14,8 @@ export interface ConfigProgramacionTorneo {
   torneo_id: string;
   duracion_minutos: 60 | 90;
   ventanas: VentanaCancha[];
+  disponibilidad_abierta?: boolean;
+  disponibilidad_habilitada_at?: string | null;
 }
 
 export interface BloqueDisponibilidad {

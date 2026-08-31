@@ -1129,7 +1129,7 @@ export function TorneoDetalleClient({
                     </div>
                     <button
                       onClick={() => setModalInscripcionPagoAbierto(true)}
-                      className="inline-flex items-center justify-center rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-hover"
+                      className="inline-flex items-center justify-center rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-hover print:hidden"
                     >
                       Inscribirme al Torneo
                     </button>
@@ -1144,7 +1144,7 @@ export function TorneoDetalleClient({
             ) : null}
 
             {pestanaMostrada !== "ranking" ? (
-            <div className="mb-6 space-y-3 rounded-lg bg-[#1a1a1a] p-4">
+            <div className="mb-6 space-y-3 rounded-lg bg-[#1a1a1a] p-4 print:hidden">
               <div className="inline-flex rounded-lg bg-background p-1">
                 {["Todos", "Masculino", "Femenino"].map((genero) => {
                   const activo = generoFiltro === genero;
@@ -1240,7 +1240,7 @@ export function TorneoDetalleClient({
                   <button
                     type="button"
                     onClick={abrirModalInscribir}
-                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-hover active:scale-[0.98]"
+                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-hover active:scale-[0.98] print:hidden"
                   >
                     <UserPlus size={16} />
                     Inscribir
@@ -1276,7 +1276,7 @@ export function TorneoDetalleClient({
                             Género
                           </th>
                           {isAdmin && (
-                            <th className="px-4 py-3 text-right font-medium sm:px-6">
+                            <th className="px-4 py-3 text-right font-medium print:hidden sm:px-6">
                               Acciones
                             </th>
                           )}
@@ -1306,7 +1306,7 @@ export function TorneoDetalleClient({
                               {inscripto.jugador.genero}
                             </td>
                             {isAdmin && (
-                              <td className="px-4 py-3 sm:px-6">
+                              <td className="px-4 py-3 print:hidden sm:px-6">
                                 <div className="flex items-center justify-end">
                                   <button
                                     type="button"
@@ -1407,8 +1407,19 @@ export function TorneoDetalleClient({
                   Partidos / Llaves
                 </h2>
 
-                {isAdmin && !isLoadingPartidos && (
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* Botón Exportar PDF - visible para todos */}
+                  <button
+                    type="button"
+                    onClick={() => window.print()}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-accent bg-accent/10 px-4 py-2.5 text-sm font-semibold text-accent transition hover:bg-accent/20 active:scale-[0.98] print:hidden"
+                    title="Guardar el cuadro como PDF"
+                  >
+                    🖨️ Exportar / Guardar PDF
+                  </button>
+
+                  {isAdmin && !isLoadingPartidos && (
+                  <div className="flex flex-col gap-2 print:hidden sm:flex-row sm:items-center">
                     {partidosClasificacionFiltrados.length === 0 &&
                       inscriptosFiltrados.length >= 2 && (
                       <button
@@ -1464,13 +1475,14 @@ export function TorneoDetalleClient({
                       </button>
                     )}
                   </div>
-                )}
+                  )}
+                </div>
               </div>
 
               {hayCuadroEliminatorio(partidosCuadroCategoria) &&
                 rondasCuadroDisponibles.length > 0 && (
                   <div
-                    className="mb-6 flex flex-wrap gap-2"
+                    className="mb-6 flex flex-wrap gap-2 print:hidden"
                     role="tablist"
                     aria-label="Rondas del cuadro"
                   >

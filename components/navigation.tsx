@@ -52,7 +52,7 @@ export function Navigation() {
 
   return (
     <>
-      <aside className="hidden md:flex md:w-64 md:shrink-0 md:flex-col md:border-r md:border-border md:bg-surface">
+      <aside className="hidden print:hidden md:flex md:w-64 md:shrink-0 md:flex-col md:border-r md:border-border md:bg-surface">
         <div className="border-b border-border px-6 py-6">
           <Image
             src="/logo-tenis-la-via.png"

@@ -50,7 +50,7 @@ export function CreditoRogmaLab() {
   }
 
   return (
-    <p className="flex justify-end px-4 pb-6 pt-4 sm:px-6 lg:px-10">
+    <p className="flex justify-end px-4 pb-6 pt-4 print:hidden sm:px-6 lg:px-10">
       <span className="inline-flex items-center gap-1.5 text-xs text-foreground/45 sm:text-sm">
         Diseñado y desarrollado por
         <a

@@ -48,3 +48,45 @@ button:has(> svg:only-child),
 button:has(> span:only-child > svg:only-child) {
   min-width: 44px;
 }
+
+/* Estilos de impresión para cuadro de torneos */
+@media print {
+  @page {
+    size: landscape;
+    margin: 0.5cm;
+  }
+
+  body {
+    background: white !important;
+    color: black !important;
+  }
+
+  /* Ocultar elementos interactivos */
+  button,
+  input,
+  select,
+  textarea,
+  .no-print,
+  [data-sonner-toaster] {
+    display: none !important;
+  }
+
+  /* Optimizar espacio en impresión */
+  main {
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Evitar saltos de página en elementos clave */
+  .cuadro-llaves,
+  .tarjeta-partido {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  /* Asegurar que el cuadro use todo el ancho */
+  .cuadro-container {
+    width: 100% !important;
+    max-width: none !important;
+  }
+}

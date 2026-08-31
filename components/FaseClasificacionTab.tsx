@@ -378,7 +378,7 @@ export function FaseClasificacionTab({
             Se necesitan al menos 2 personas inscriptas en esta categoría.
           </p>
         ) : isAdmin ? (
-          <div className="mt-6 flex flex-col items-center gap-3 sm:flex-row">
+          <div className="mt-6 flex flex-col items-center gap-3 print:hidden sm:flex-row">
             <button
               type="button"
               onClick={handleSortear}
@@ -527,7 +527,7 @@ export function FaseClasificacionTab({
       )}
 
       {isAdmin && (
-        <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="mt-6 flex flex-col gap-3 print:hidden sm:flex-row sm:items-center">
           <button
             type="button"
             onClick={handleAgregarCruceDraft}

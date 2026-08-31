@@ -9,6 +9,7 @@ export function Toaster() {
       position="top-center"
       richColors
       closeButton
+      className="print:hidden"
     />
   );
 }

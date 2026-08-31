@@ -32,10 +32,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="es"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full bg-background text-foreground md:flex">
+      <body className="min-h-full bg-background text-foreground print:bg-white print:text-black md:flex">
         <AuthProvider>
           <Navigation />
-          <div className="flex min-h-screen flex-1 flex-col pb-20 md:pb-0">
+          <div className="flex min-h-screen flex-1 flex-col pb-20 print:pb-0 md:pb-0">
             <div className="flex-1">
               <ClaimPerfilGate>{children}</ClaimPerfilGate>
             </div>

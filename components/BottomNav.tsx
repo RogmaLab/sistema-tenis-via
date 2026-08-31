@@ -38,7 +38,7 @@ export function BottomNav() {
 
   return (
     <nav
-      className="fixed bottom-0 z-50 flex w-full border-t border-border bg-surface pb-[env(safe-area-inset-bottom)] md:hidden"
+      className="fixed bottom-0 z-50 flex w-full border-t border-border bg-surface pb-[env(safe-area-inset-bottom)] print:hidden md:hidden"
       aria-label="Navegación principal"
     >
       <div className="flex w-full justify-around">

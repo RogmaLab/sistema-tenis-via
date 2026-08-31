@@ -280,7 +280,7 @@ export function TarjetaPartidoTenis({
         />
 
         {isAdmin && (puedeProgramar || puedeCargar || puedeEditar) ? (
-          <div className="flex gap-1.5 border-t border-[#3f3f46] p-1.5">
+          <div className="flex gap-1.5 border-t border-[#3f3f46] p-1.5 print:hidden">
             {puedeProgramar && onProgramarPartido ? (
               <button
                 type="button"

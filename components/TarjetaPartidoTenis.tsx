@@ -1,6 +1,7 @@
 "use client";
 
-import { Calendar, Check, CloudRain, Pencil } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Calendar, Check, MoreVertical, Pencil } from "lucide-react";
 import { formatProgramacionPartido } from "@/lib/datetime";
 import { BadgeEnCancha, estaEnCancha } from "@/components/BadgeEnCancha";
 
@@ -59,25 +60,88 @@ function parsearSets(resultado: string | null) {
   return j1.length > 0 ? { j1, j2 } : null;
 }
 
+function MenuOpcionesPartido({
+  onSuspenderPorLluvia,
+}: {
+  onSuspenderPorLluvia: () => void;
+}) {
+  const [menuAbierto, setMenuAbierto] = useState(false);
+
+  useEffect(() => {
+    if (!menuAbierto) return;
+
+    function cerrarMenu() {
+      setMenuAbierto(false);
+    }
+
+    document.addEventListener("click", cerrarMenu);
+    return () => document.removeEventListener("click", cerrarMenu);
+  }, [menuAbierto]);
+
+  function handleSuspender() {
+    setMenuAbierto(false);
+    const confirmado = window.confirm("¿Este partido se suspendió por lluvia?");
+    if (!confirmado) return;
+    onSuspenderPorLluvia();
+  }
+
+  return (
+    <div className="relative shrink-0" data-export-hide>
+      <button
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation();
+          setMenuAbierto((prev) => !prev);
+        }}
+        aria-label="Más opciones del partido"
+        aria-expanded={menuAbierto}
+        className="-mr-0.5 rounded-md p-1 text-foreground/40 transition hover:bg-background/60 hover:text-foreground/70"
+      >
+        <MoreVertical size={14} strokeWidth={2.25} />
+      </button>
+
+      {menuAbierto ? (
+        <div
+          onClick={(event) => event.stopPropagation()}
+          className="absolute right-0 top-full z-20 mt-1 min-w-[11.5rem] overflow-hidden rounded-lg border border-border bg-surface shadow-xl shadow-black/40"
+        >
+          <button
+            type="button"
+            onClick={handleSuspender}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-[11px] font-medium text-amber-400/90 transition hover:bg-amber-500/10 hover:text-amber-300"
+          >
+            🌧️ Suspender por lluvia
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function BadgeProgramacion({
   fecha,
   cancha,
   estado,
   ambosJugadores,
   suspendidoLluvia,
+  mostrarMenuSuspension,
+  onSuspenderPorLluvia,
 }: {
   fecha: string | null;
   cancha: string | null;
   estado: string;
   ambosJugadores: boolean;
   suspendidoLluvia?: boolean;
+  mostrarMenuSuspension: boolean;
+  onSuspenderPorLluvia?: () => void;
 }) {
   const pendiente = estado === "Pendiente";
   const enCancha = estaEnCancha({ fechaProgramada: fecha, estado });
   const tieneHorario = Boolean(fecha || cancha);
-  const mostrarPendiente = pendiente && ambosJugadores && !tieneHorario;
+  const mostrarPendiente =
+    pendiente && ambosJugadores && !tieneHorario && !suspendidoLluvia;
   const mostrarSuspendido =
-    Boolean(suspendidoLluvia) && pendiente && ambosJugadores && !tieneHorario;
+    Boolean(suspendidoLluvia) && pendiente && ambosJugadores;
 
   if (!tieneHorario && !enCancha && !mostrarPendiente && !mostrarSuspendido) {
     return null;
@@ -85,32 +149,41 @@ function BadgeProgramacion({
 
   return (
     <div className="tarjeta-programacion flex items-center justify-between gap-2 border-b border-border/70 bg-background/50 px-2.5 py-1.5 text-[10px] font-medium leading-snug text-foreground/75">
-      <div className="flex min-w-0 flex-wrap items-center gap-1">
-        {fecha ? (
-          <span className="tarjeta-programacion-horario">
-            🗓️ {formatProgramacionPartido(fecha)}
-          </span>
-        ) : null}
-        {fecha && cancha ? (
-          <span className="mx-0.5 text-foreground/25">|</span>
-        ) : null}
-        {cancha ? (
-          <span className="tarjeta-programacion-cancha">📍 {cancha}</span>
-        ) : null}
+      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
         {mostrarSuspendido ? (
-          <span className="tarjeta-programacion-pendiente text-amber-400">
-            A programar (Suspendido por lluvia)
+          <span className="inline-flex items-center rounded-md border border-amber-500/25 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-400/95">
+            ⚠️ Suspendido por lluvia
           </span>
-        ) : mostrarPendiente ? (
-          <span className="tarjeta-programacion-pendiente">A programar</span>
-        ) : null}
+        ) : (
+          <>
+            {fecha ? (
+              <span className="tarjeta-programacion-horario">
+                🗓️ {formatProgramacionPartido(fecha)}
+              </span>
+            ) : null}
+            {fecha && cancha ? (
+              <span className="mx-0.5 text-foreground/25">|</span>
+            ) : null}
+            {cancha ? (
+              <span className="tarjeta-programacion-cancha">📍 {cancha}</span>
+            ) : null}
+            {mostrarPendiente ? (
+              <span className="tarjeta-programacion-pendiente">A programar</span>
+            ) : null}
+          </>
+        )}
       </div>
 
-      {enCancha ? (
-        <span data-export-hide>
-          <BadgeEnCancha compacto />
-        </span>
-      ) : null}
+      <div className="flex shrink-0 items-center gap-1">
+        {mostrarMenuSuspension && onSuspenderPorLluvia ? (
+          <MenuOpcionesPartido onSuspenderPorLluvia={onSuspenderPorLluvia} />
+        ) : null}
+        {enCancha ? (
+          <span data-export-hide>
+            <BadgeEnCancha compacto />
+          </span>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -299,6 +372,8 @@ export function TarjetaPartidoTenis({
           estado={partido.estado}
           ambosJugadores={Boolean(partido.jugador_1 && partido.jugador_2)}
           suspendidoLluvia={partido.suspendido_lluvia}
+          mostrarMenuSuspension={puedeSuspenderPorLluvia}
+          onSuspenderPorLluvia={onSuspenderPorLluvia}
         />
 
         {(etiqueta || (pendiente || finalizado)) && etiqueta ? (
@@ -345,44 +420,31 @@ export function TarjetaPartidoTenis({
           esPlaceholder={esTextoPlaceholder(j2Nombre)}
         />
 
-        {isAdmin &&
-        (puedeProgramar || puedeCargar || puedeEditar || puedeSuspenderPorLluvia) ? (
+        {isAdmin && (puedeProgramar || puedeCargar || puedeEditar) ? (
           <div
             data-export-hide
-            className="flex flex-col gap-1.5 border-t border-[#3f3f46] p-1.5 print:hidden"
+            className="flex gap-1.5 border-t border-[#3f3f46] p-1.5 print:hidden"
           >
-            {puedeSuspenderPorLluvia ? (
+            {puedeProgramar && onProgramarPartido ? (
               <button
                 type="button"
-                onClick={onSuspenderPorLluvia}
-                className="inline-flex min-h-9 w-full items-center justify-center gap-1.5 rounded-md bg-amber-500 px-2.5 py-2 text-[11px] font-bold uppercase tracking-wide text-black shadow-sm transition hover:bg-amber-600 active:scale-[0.98]"
+                onClick={onProgramarPartido}
+                className="inline-flex min-h-8 flex-1 items-center justify-center gap-1 rounded-md border border-[#3f3f46] px-2 py-1 text-[10px] font-semibold text-foreground/70 transition hover:bg-background/60 hover:text-foreground"
               >
-                <CloudRain size={14} strokeWidth={2.5} className="text-black" />
-                Suspendido por lluvia
+                <Calendar size={12} strokeWidth={2.25} />
+                {programado ? "Editar horario" : "Programar"}
               </button>
             ) : null}
-            <div className="flex gap-1.5">
-              {puedeProgramar && onProgramarPartido ? (
-                <button
-                  type="button"
-                  onClick={onProgramarPartido}
-                  className="inline-flex min-h-8 flex-1 items-center justify-center gap-1 rounded-md border border-[#3f3f46] px-2 py-1 text-[10px] font-semibold text-foreground/70 transition hover:bg-background/60 hover:text-foreground"
-                >
-                  <Calendar size={12} strokeWidth={2.25} />
-                  {programado ? "Editar horario" : "Programar"}
-                </button>
-              ) : null}
-              {(puedeCargar || puedeEditar) && onCargarResultado ? (
-                <button
-                  type="button"
-                  onClick={onCargarResultado}
-                  className="inline-flex min-h-8 flex-1 items-center justify-center gap-1 rounded-md border border-[#3f3f46] bg-background/40 px-2 py-1 text-[10px] font-semibold text-foreground/80 transition hover:bg-background/70 hover:text-foreground"
-                >
-                  <Pencil size={12} strokeWidth={2.25} />
-                  {pendiente ? "Cargar Resultado" : "Editar Resultado"}
-                </button>
-              ) : null}
-            </div>
+            {(puedeCargar || puedeEditar) && onCargarResultado ? (
+              <button
+                type="button"
+                onClick={onCargarResultado}
+                className="inline-flex min-h-8 flex-1 items-center justify-center gap-1 rounded-md border border-[#3f3f46] bg-background/40 px-2 py-1 text-[10px] font-semibold text-foreground/80 transition hover:bg-background/70 hover:text-foreground"
+              >
+                <Pencil size={12} strokeWidth={2.25} />
+                {pendiente ? "Cargar Resultado" : "Editar Resultado"}
+              </button>
+            ) : null}
           </div>
         ) : null}
       </div>

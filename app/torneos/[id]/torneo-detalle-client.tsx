@@ -962,11 +962,6 @@ export function TorneoDetalleClient({
   async function handleSuspenderPorLluvia(partido: PartidoConJugadores) {
     if (!isAdmin) return;
 
-    const confirmado = window.confirm(
-      `¿Suspender por lluvia el partido "${partido.jugador_1?.nombre_completo ?? "?"} vs ${partido.jugador_2?.nombre_completo ?? "?"}"?\n\nSe quitará el horario y cancha asignados. El partido quedará prioritario para reprogramar el próximo fin de semana.`
-    );
-    if (!confirmado) return;
-
     try {
       await suspenderPartidoPorLluvia(partido.id);
       toast.success("Partido suspendido por lluvia. Quedó pendiente de reprogramación.");

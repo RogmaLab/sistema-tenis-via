@@ -13,12 +13,14 @@ import { createClient } from "@/lib/supabase/client";
 import { WhatsAppIcon } from "@/components/whatsapp-icon";
 import { useAuth } from "@/components/auth-provider";
 import {
-  CATEGORIAS_JUGADOR,
+  CATEGORIAS_FICHA,
   GENEROS,
+  esCategoriaFicha,
   type CategoriaJugador,
   type Genero,
   type Jugador,
 } from "@/lib/types";
+import { nombreJugador } from "@/lib/nombre";
 
 type FiltroCategoria = CategoriaJugador | "todas";
 type FiltroGenero = Genero | "todos";
@@ -49,11 +51,12 @@ export function JugadoresClient() {
   const fetchJugadoresDesdeSupabase = useCallback(async () => {
     const desdeVista = await supabase
       .from("jugadores_listado")
-      .select("id, nombre_completo, whatsapp, categoria, genero, created_at")
+      .select("id, numero_jugador, nombre_completo, whatsapp, categoria, genero, created_at")
       .order("created_at", { ascending: false });
 
     let filas: {
       id: string;
+      numero_jugador?: number | null;
       nombre_completo: string;
       whatsapp?: string | null;
       categoria: string;
@@ -66,7 +69,7 @@ export function JugadoresClient() {
     } else if (isAdmin) {
       const { data, error } = await supabase
         .from("jugadores")
-        .select("id, nombre_completo, whatsapp, categoria, genero, created_at")
+        .select("id, numero_jugador, nombre_completo, whatsapp, categoria, genero, created_at")
         .order("created_at", { ascending: false });
       if (error) {
         console.error("Error al cargar jugadores:", error.message);
@@ -76,7 +79,7 @@ export function JugadoresClient() {
     } else {
       const { data, error } = await supabase
         .from("jugadores")
-        .select("id, nombre_completo, categoria, genero, created_at")
+        .select("id, numero_jugador, nombre_completo, categoria, genero, created_at")
         .order("created_at", { ascending: false });
       if (error) {
         console.error("Error al cargar jugadores:", error.message);
@@ -87,6 +90,7 @@ export function JugadoresClient() {
 
     return (filas ?? []).map((jugador) => ({
       id: jugador.id,
+      numero_jugador: jugador.numero_jugador ?? null,
       nombre_completo: jugador.nombre_completo,
       categoria: jugador.categoria,
       genero: jugador.genero,
@@ -129,16 +133,27 @@ export function JugadoresClient() {
 
   const jugadoresFiltrados = useMemo(() => {
     const termino = busqueda.trim().toLowerCase();
-    return jugadores.filter((jugador) => {
+    const filtrados = jugadores.filter((jugador) => {
+      const numero = jugador.numero_jugador != null ? String(jugador.numero_jugador) : "";
       const coincideNombre =
-        !termino || jugador.nombre_completo.toLowerCase().includes(termino);
+        !termino ||
+        jugador.nombre_completo.toLowerCase().includes(termino) ||
+        nombreJugador(jugador).toLowerCase().includes(termino) ||
+        numero.includes(termino) ||
+        `#${numero}`.includes(termino);
       const coincideCategoria =
         filtroCategoria === "todas" || jugador.categoria === filtroCategoria;
       const coincideGenero =
         filtroGenero === "todos" || jugador.genero === filtroGenero;
       return coincideNombre && coincideCategoria && coincideGenero;
     });
-  }, [jugadores, busqueda, filtroCategoria, filtroGenero]);
+
+    if (!isAdmin) return filtrados;
+
+    return [...filtrados].sort(
+      (a, b) => (a.numero_jugador ?? 999999) - (b.numero_jugador ?? 999999)
+    );
+  }, [jugadores, busqueda, filtroCategoria, filtroGenero, isAdmin]);
 
   function abrirModalNuevo() {
     if (!isAdmin) return;
@@ -302,7 +317,7 @@ export function JugadoresClient() {
                 className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-sm text-foreground outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/30"
               >
                 <option value="todas">Todas las categorías</option>
-                {CATEGORIAS_JUGADOR.map((categoria) => (
+                {CATEGORIAS_FICHA.map((categoria) => (
                   <option key={categoria} value={categoria}>
                     {categoria}
                   </option>
@@ -358,6 +373,11 @@ export function JugadoresClient() {
                 <table className="w-full min-w-[560px] text-left text-sm">
                   <thead>
                     <tr className="border-b border-border text-xs uppercase tracking-wide text-foreground/50">
+                      {isAdmin && (
+                        <th className="w-14 px-3 py-3 font-medium sm:px-4">
+                          Nº
+                        </th>
+                      )}
                       <th className="px-4 py-3 font-medium sm:px-6">Nombre</th>
                       {isAdmin && (
                         <th className="px-4 py-3 font-medium sm:px-6">
@@ -383,12 +403,19 @@ export function JugadoresClient() {
                         key={jugador.id}
                         className="border-b border-border last:border-0 hover:bg-background/40"
                       >
+                        {isAdmin && (
+                          <td className="px-3 py-3 font-semibold tabular-nums text-foreground/70 sm:px-4">
+                            {jugador.numero_jugador != null
+                              ? `#${jugador.numero_jugador}`
+                              : "—"}
+                          </td>
+                        )}
                         <td className="px-4 py-3 font-medium sm:px-6">
                           <Link
                             href={`/jugadores/${jugador.id}`}
                             className="text-foreground transition hover:text-accent hover:underline"
                           >
-                            {jugador.nombre_completo}
+                            {nombreJugador(jugador)}
                           </Link>
                         </td>
                         {isAdmin && (
@@ -418,7 +445,7 @@ export function JugadoresClient() {
                               <button
                                 type="button"
                                 onClick={() => abrirModalEdicion(jugador)}
-                                aria-label={`Editar a ${jugador.nombre_completo}`}
+                                aria-label={`Editar a ${nombreJugador(jugador)}`}
                                 className="inline-flex items-center justify-center rounded-lg p-2 text-foreground/50 transition hover:bg-foreground/10 hover:text-foreground"
                               >
                                 <Pencil size={16} />
@@ -426,7 +453,7 @@ export function JugadoresClient() {
                               <button
                                 type="button"
                                 onClick={() => handleEliminarJugador(jugador.id)}
-                                aria-label={`Eliminar a ${jugador.nombre_completo}`}
+                                aria-label={`Eliminar a ${nombreJugador(jugador)}`}
                                 className="inline-flex items-center justify-center rounded-lg p-2 text-red-500/70 transition hover:bg-red-500/10 hover:text-red-500"
                               >
                                 <Trash2 size={16} />
@@ -559,7 +586,14 @@ export function JugadoresClient() {
                   <option value="" disabled>
                     Seleccioná una categoría
                   </option>
-                  {CATEGORIAS_JUGADOR.map((categoria) => (
+                  {jugadorEditando &&
+                  !esCategoriaFicha(jugadorEditando.categoria) &&
+                  jugadorEditando.categoria ? (
+                    <option value={jugadorEditando.categoria}>
+                      {jugadorEditando.categoria}
+                    </option>
+                  ) : null}
+                  {CATEGORIAS_FICHA.map((categoria) => (
                     <option key={categoria} value={categoria}>
                       {categoria}
                     </option>

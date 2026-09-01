@@ -36,7 +36,7 @@ export async function fetchResumenPerfil(
     proximosResult,
   ] = await Promise.all([
     supabase.from("jugadores").select("id, nombre_completo, categoria"),
-    supabase.from("torneo_jugadores").select("jugador_id, torneo_id"),
+    supabase.from("torneo_jugadores").select("jugador_id, torneo_id, categoria"),
     supabase
       .from("partidos")
       .select(
@@ -60,9 +60,15 @@ export async function fetchResumenPerfil(
 
   const partidosFinalizados =
     (partidosResult.data as PartidoParaRanking[] | null) ?? [];
+  const categoriasFicha = new Map(
+    (jugadoresResult.data ?? []).map(
+      (fila: { id: string; categoria: string }) => [fila.id, fila.categoria]
+    )
+  );
   const puntajes = calcularPuntajesRanking(
     (inscripcionesResult.data as InscripcionParaRanking[] | null) ?? [],
-    partidosFinalizados
+    partidosFinalizados,
+    categoriasFicha
   );
 
   const jugadoresRanking = (jugadoresResult.data ?? []).map(
@@ -92,6 +98,7 @@ export async function fetchResumenPerfil(
 
   const trofeos = extraerTrofeos({
     jugadorId,
+    categoriaFicha: categoriasFicha.get(jugadorId),
     torneosFinalizados: torneosFinalizadosResult.data ?? [],
     partidos: (partidosResult.data ?? []) as {
       torneo_id: string | null;
@@ -140,7 +147,11 @@ export async function fetchResumenPerfil(
   );
 
   return {
-    partidosJugados: contarPartidosJugados(jugadorId, partidosFinalizados),
+    partidosJugados: contarPartidosJugados(
+      jugadorId,
+      partidosFinalizados,
+      categoriasFicha.get(jugadorId),
+    ),
     partidosGanados: mio?.partidosGanados ?? 0,
     diferenciaGames: mio?.diferenciaGames ?? 0,
     puntos: mio?.puntos ?? 0,

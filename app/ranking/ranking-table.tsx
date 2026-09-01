@@ -3,13 +3,14 @@
 import { useMemo, useState } from "react";
 import { Award } from "lucide-react";
 import {
-  CATEGORIAS_JUGADOR,
+  CATEGORIAS_FICHA,
   GENEROS,
   type CategoriaJugador,
   type Genero,
   type JugadorRanking,
 } from "@/lib/types";
 import { FiltrosCategorias } from "@/components/FiltrosCategorias";
+import { nombreJugador } from "@/lib/nombre";
 
 type FiltroCategoria = CategoriaJugador | "todas";
 type FiltroGenero = Genero | "todos";
@@ -55,23 +56,19 @@ export function RankingTable({ ranking }: RankingTableProps) {
 
   // Calcular conteos por categoría (considerando filtro de género)
   const conteosPorCategoria = useMemo(() => {
-    const conteos: Record<string, number> = {
-      todas: 0,
-      "3ra": 0,
-      "4ta": 0,
-      "5ta": 0,
-      Damas: 0,
-    };
+    const conteos: Record<string, number> = { todas: 0 };
+    for (const categoria of CATEGORIAS_FICHA) {
+      conteos[categoria] = 0;
+    }
 
     ranking.forEach((jugador) => {
       const coincideGenero =
         filtroGenero === "todos" || jugador.genero === filtroGenero;
-      
+
       if (coincideGenero) {
         conteos.todas++;
-        const categoria = jugador.categoria as keyof typeof conteos;
-        if (categoria in conteos) {
-          conteos[categoria]++;
+        if (jugador.categoria in conteos) {
+          conteos[jugador.categoria]++;
         }
       }
     });
@@ -91,6 +88,7 @@ export function RankingTable({ ranking }: RankingTableProps) {
             categoriaActiva={filtroCategoria}
             onCambiarCategoria={setFiltroCategoria}
             conteos={conteosPorCategoria}
+            categorias={CATEGORIAS_FICHA}
           />
         </div>
 
@@ -182,7 +180,7 @@ export function RankingTable({ ranking }: RankingTableProps) {
                         </span>
                       </td>
                       <td className="px-4 py-3 font-medium text-foreground sm:px-6">
-                        {jugador.nombre_completo}
+                        {nombreJugador(jugador)}
                       </td>
                       <td className="px-4 py-3 sm:px-6">
                         <span className="inline-block rounded-full border border-border px-2.5 py-1 text-xs font-semibold text-foreground/80">

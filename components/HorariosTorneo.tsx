@@ -1,6 +1,7 @@
 "use client";
 
 import { formatFechaHorario } from "@/lib/datetime";
+import { nombreJugador } from "@/lib/nombre";
 
 export interface PartidoHorario {
   id: string;
@@ -15,9 +16,16 @@ export interface PartidoHorario {
 interface HorariosTorneoProps {
   partidos: PartidoHorario[];
   isLoading?: boolean;
+  isAdmin?: boolean;
+  onGestionarPartido?: (partido: PartidoHorario) => void;
 }
 
-export function HorariosTorneo({ partidos, isLoading = false }: HorariosTorneoProps) {
+export function HorariosTorneo({
+  partidos,
+  isLoading = false,
+  isAdmin = false,
+  onGestionarPartido,
+}: HorariosTorneoProps) {
   if (isLoading) {
     return (
       <p className="rounded-2xl border border-border bg-surface px-6 py-10 text-center text-sm text-foreground/50">
@@ -39,30 +47,49 @@ export function HorariosTorneo({ partidos, isLoading = false }: HorariosTorneoPr
     );
   }
 
+  const clickeable = Boolean(isAdmin && onGestionarPartido);
+
   return (
     <ul className="space-y-2">
-      {partidos.map((partido) => (
-        <li
-          key={partido.id}
-          className="rounded-2xl border border-border bg-surface px-4 py-3 sm:px-5"
-        >
-          <p className="text-xs font-medium text-foreground/50">
-            {partido.fecha_programada
-              ? formatFechaHorario(partido.fecha_programada)
-              : "Horario a confirmar"}
-            {partido.cancha ? ` · ${partido.cancha}` : ""}
-          </p>
-          <p className="mt-1 text-sm font-semibold text-foreground">
-            {partido.jugador_1?.nombre_completo ?? "Por definir"}{" "}
-            <span className="font-normal text-foreground/40">vs</span>{" "}
-            {partido.jugador_2?.nombre_completo ?? "Por definir"}
-          </p>
-          <p className="mt-0.5 text-xs text-foreground/45">
-            {partido.fase}
-            {partido.categoria ? ` · ${partido.categoria}` : ""}
-          </p>
-        </li>
-      ))}
+      {partidos.map((partido) => {
+        const vs = (
+          <>
+            <p className="text-xs font-medium text-foreground/50">
+              {partido.fecha_programada
+                ? formatFechaHorario(partido.fecha_programada)
+                : "Horario a confirmar"}
+              {partido.cancha ? ` · ${partido.cancha}` : ""}
+            </p>
+            <p className="mt-1 text-sm font-semibold text-foreground">
+              {nombreJugador(partido.jugador_1, "Por definir")}{" "}
+              <span className="font-normal text-foreground/40">vs</span>{" "}
+              {nombreJugador(partido.jugador_2, "Por definir")}
+            </p>
+            <p className="mt-0.5 text-xs text-foreground/45">
+              {partido.fase}
+              {partido.categoria ? ` · ${partido.categoria}` : ""}
+            </p>
+          </>
+        );
+
+        return (
+          <li key={partido.id}>
+            {clickeable ? (
+              <button
+                type="button"
+                onClick={() => onGestionarPartido?.(partido)}
+                className="w-full rounded-2xl border border-border bg-surface px-4 py-3 text-left transition hover:border-accent/50 hover:bg-background/40 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30 sm:px-5"
+              >
+                {vs}
+              </button>
+            ) : (
+              <div className="rounded-2xl border border-border bg-surface px-4 py-3 sm:px-5">
+                {vs}
+              </div>
+            )}
+          </li>
+        );
+      })}
     </ul>
   );
 }

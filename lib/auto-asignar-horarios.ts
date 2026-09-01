@@ -3,6 +3,7 @@ import { esJugadorHumano } from "@/lib/motor-ranking";
 import type { DiaFinDeSemana, VentanaCancha } from "@/lib/disponibilidad-canchas";
 import type { BloqueHorario as BloqueHorarioJugador } from "@/lib/types";
 import { tienenDisponibilidadComun } from "@/lib/disponibilidad-jugadores";
+import { intervalosSeSolapan } from "@/lib/solapamiento-horarios";
 
 export interface BloqueHorarioCancha {
   cancha: string;
@@ -155,20 +156,13 @@ export function generarBloquesHorarios(params: {
   return bloques;
 }
 
-function seSolapan(
-  a: { inicioMs: number; finMs: number },
-  b: { inicioMs: number; finMs: number }
-) {
-  return a.inicioMs < b.finMs && b.inicioMs < a.finMs;
-}
-
 function bloqueLibre(
   bloque: BloqueHorarioCancha,
   ocupaciones: OcupacionExistente[],
   jugadorIds: string[]
 ) {
   for (const ocupado of ocupaciones) {
-    if (!seSolapan(bloque, ocupado)) continue;
+    if (!intervalosSeSolapan(bloque, ocupado)) continue;
     if (ocupado.cancha && ocupado.cancha === bloque.cancha) return false;
     if (ocupado.jugadorIds.some((id) => jugadorIds.includes(id))) return false;
   }

@@ -1,26 +1,28 @@
 "use client";
 
-import { CATEGORIAS_JUGADOR, type CategoriaJugador } from "@/lib/types";
+import { CATEGORIAS_TORNEO, type CategoriaJugador } from "@/lib/types";
 
 interface FiltrosCategoriasProps {
   categoriaActiva: CategoriaJugador | "todas";
   onCambiarCategoria: (categoria: CategoriaJugador | "todas") => void;
-  conteos?: Record<CategoriaJugador | "todas", number>;
+  conteos?: Record<string, number>;
+  categorias?: readonly CategoriaJugador[];
 }
 
 export function FiltrosCategorias({
   categoriaActiva,
   onCambiarCategoria,
   conteos,
+  categorias = CATEGORIAS_TORNEO,
 }: FiltrosCategoriasProps) {
-  const categorias: Array<{ id: CategoriaJugador | "todas"; label: string }> = [
+  const opciones: Array<{ id: CategoriaJugador | "todas"; label: string }> = [
     { id: "todas", label: "Todas" },
-    ...CATEGORIAS_JUGADOR.map((cat) => ({ id: cat, label: cat })),
+    ...categorias.map((cat) => ({ id: cat, label: cat })),
   ];
 
   return (
     <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-thin">
-      {categorias.map(({ id, label }) => {
+      {opciones.map(({ id, label }) => {
         const activo = categoriaActiva === id;
         const conteo = conteos?.[id];
         

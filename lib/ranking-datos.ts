@@ -26,11 +26,11 @@ export async function fetchRankingCircuito(
       supabase
         .from("jugadores")
         .select("id, nombre_completo, categoria, genero"),
-      supabase.from("torneo_jugadores").select("jugador_id, torneo_id"),
+      supabase.from("torneo_jugadores").select("jugador_id, torneo_id, categoria"),
       supabase
         .from("partidos")
         .select(
-          "torneo_id, ganador_id, fase, jugador_1_id, jugador_2_id, resultado"
+          "torneo_id, ganador_id, fase, categoria, jugador_1_id, jugador_2_id, resultado"
         )
         .eq("estado", "Finalizado"),
     ]);
@@ -63,7 +63,8 @@ export async function fetchRankingCircuito(
 
   const puntajesPorJugador = calcularPuntajesRanking(
     (inscripcionesResult.data as InscripcionParaRanking[] | null) ?? [],
-    (partidosFinalizadosResult.data as PartidoParaRanking[] | null) ?? []
+    (partidosFinalizadosResult.data as PartidoParaRanking[] | null) ?? [],
+    new Map(jugadores.map((jugador) => [jugador.id, jugador.categoria]))
   );
 
   const ranking: JugadorRanking[] = jugadores.map((jugador) => {

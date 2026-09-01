@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
-  CATEGORIAS_JUGADOR,
+  CATEGORIAS_TORNEO,
   FORMATOS_TORNEO,
   FORMATO_TORNEO_LABELS,
   type FormatoTorneo,
@@ -575,7 +575,7 @@ export function TorneosClient() {
                   {/* flex-wrap: las viñetas largas (ej. "4ta/5ta Caballeros")
                       ocupan el ancho que necesitan en una sola línea */}
                   <div className="flex flex-wrap gap-2">
-                    {CATEGORIAS_JUGADOR.map((categoria) => (
+                    {CATEGORIAS_TORNEO.map((categoria) => (
                       <label key={categoria} className="cursor-pointer">
                         <input
                           type="checkbox"

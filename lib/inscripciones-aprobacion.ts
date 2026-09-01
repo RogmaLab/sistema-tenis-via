@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { enviarCorreoInscripcionConfirmada } from "@/lib/email/inscripcion-confirmada";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { actualizarEstadoInscripcion } from "@/lib/inscripciones-pago";
+import { formatearNombre } from "@/lib/nombre";
 
 export interface ResultadoAprobacionInscripcion {
   yaInscritoEnTorneo: boolean;
@@ -122,7 +123,7 @@ export async function aprobarInscripcionConNotificacion(
     } else {
       const resultadoCorreo = await enviarCorreoInscripcionConfirmada({
         emailDestino,
-        nombreJugador: jugador.nombre_completo,
+        nombreJugador: formatearNombre(jugador.nombre_completo),
         nombreTorneo: torneo.nombre,
       });
 
@@ -146,7 +147,7 @@ export async function aprobarInscripcionConNotificacion(
 
   return {
     yaInscritoEnTorneo: Boolean(yaInscrito),
-    nombreJugador: jugador.nombre_completo,
+    nombreJugador: formatearNombre(jugador.nombre_completo),
     correoEnviado,
     errorCorreo,
   };

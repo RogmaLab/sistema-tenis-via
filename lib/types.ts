@@ -42,7 +42,7 @@ export function normalizarFormatoTorneo(
 }
 
 // Coincide exactamente con las columnas de la tabla "torneos" en Supabase.
-// `categorias` es un array de texto (una o más de CATEGORIAS_JUGADOR) y
+// `categorias` es un array de texto (una o más de CATEGORIAS_TORNEO) y
 // `formato` queda como `string` por el mismo motivo que en Jugador: es una
 // columna de texto libre en la base, sin enum a nivel de Postgres.
 // `fecha_apertura_inscripcion`/`fecha_cierre_inscripcion` son el período
@@ -70,26 +70,44 @@ export interface Torneo {
   created_at: string;
 }
 
-export type CategoriaJugador =
+export type CategoriaFicha =
   | "1ra"
   | "2da"
   | "3ra"
   | "4ta"
   | "5ta"
-  | "6ta"
+  | "6ta";
+
+export type CategoriaTorneoCompuesta =
   | "4ta/5ta Caballeros"
   | "4ta/5ta Damas";
 
-export const CATEGORIAS_JUGADOR: CategoriaJugador[] = [
+export type CategoriaJugador = CategoriaFicha | CategoriaTorneoCompuesta;
+
+/** Niveles puros de ficha (damas y caballeros). Nunca incluyen cuadros mixtos. */
+export const CATEGORIAS_FICHA: CategoriaFicha[] = [
   "1ra",
   "2da",
   "3ra",
   "4ta",
   "5ta",
   "6ta",
+];
+
+/** Cuadros de torneo: niveles puros + categorías compuestas para fusionar llaves. */
+export const CATEGORIAS_TORNEO: CategoriaJugador[] = [
+  ...CATEGORIAS_FICHA,
   "4ta/5ta Caballeros",
   "4ta/5ta Damas",
 ];
+
+export const CATEGORIAS_JUGADOR = CATEGORIAS_TORNEO;
+
+export function esCategoriaFicha(
+  valor: string | null | undefined
+): valor is CategoriaFicha {
+  return CATEGORIAS_FICHA.includes((valor ?? "") as CategoriaFicha);
+}
 
 export type Genero = "Masculino" | "Femenino";
 
@@ -99,8 +117,9 @@ export const GENEROS: Genero[] = ["Masculino", "Femenino"];
 // `categoria` y `genero` quedan como `string` (no como los union types de
 // arriba) porque así es como llegan desde la base: columnas de texto libre,
 // sin un enum/check constraint que garantice los valores en tiempo de
-// compilación. Los arrays CATEGORIAS_JUGADOR/GENEROS siguen siendo la fuente
-// de verdad para poblar los <select> del formulario.
+// compilación. CATEGORIAS_FICHA / CATEGORIAS_TORNEO / GENEROS son la fuente
+// de verdad para poblar los <select>: CATEGORIAS_FICHA en fichas de jugador
+// y CATEGORIAS_TORNEO en la creación de torneos.
 export type BloqueHorario =
   | "sabado_manana"    // Sábado 08:00-13:00
   | "sabado_tarde"     // Sábado 13:00-18:00
@@ -133,6 +152,8 @@ export interface Jugador {
   whatsapp: string;
   categoria: string;
   genero: string;
+  /** Identificador numérico del club (#1, #2…). */
+  numero_jugador?: number | null;
   /** Cuenta de auth vinculada. null = ficha todavía no reclamada. */
   user_id?: string | null;
   /** Bloques horarios en los que el jugador puede jugar */

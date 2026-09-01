@@ -13,12 +13,14 @@ import {
   UserRound,
 } from "lucide-react";
 import { formatFechaCuadro } from "@/lib/datetime";
+import { nombreJugador } from "@/lib/nombre";
 import { formatPuesto, type PuestoTrofeo } from "@/lib/perfil-jugador";
 import type { ResumenPerfil } from "@/lib/perfil-datos";
 import {
-  CATEGORIAS_JUGADOR,
+  CATEGORIAS_FICHA,
   GENEROS,
-  type CategoriaJugador,
+  esCategoriaFicha,
+  type CategoriaFicha,
   type Genero,
   type Jugador,
 } from "@/lib/types";
@@ -146,11 +148,11 @@ export function FichaPerfilJugador({
         <div className="bg-gradient-to-br from-accent/20 via-surface to-surface p-5 sm:p-6">
           <div className="flex items-start gap-4">
             <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-accent/20 text-lg font-bold text-accent">
-              {iniciales(jugador.nombre_completo) || "?"}
+              {iniciales(nombreJugador(jugador)) || "?"}
             </div>
             <div className="min-w-0 flex-1">
               <h2 className="truncate text-xl font-bold text-foreground">
-                {jugador.nombre_completo}
+                {nombreJugador(jugador)}
               </h2>
               <p className="mt-1 text-sm text-foreground/60">
                 {jugador.categoria}
@@ -343,12 +345,10 @@ export function FichaPerfilJugador({
               defaultValue={jugador.categoria}
               className={inputClass}
             >
-              {!CATEGORIAS_JUGADOR.includes(
-                jugador.categoria as CategoriaJugador
-              ) && jugador.categoria ? (
+              {!esCategoriaFicha(jugador.categoria) && jugador.categoria ? (
                 <option value={jugador.categoria}>{jugador.categoria}</option>
               ) : null}
-              {CATEGORIAS_JUGADOR.map((categoria: CategoriaJugador) => (
+              {CATEGORIAS_FICHA.map((categoria: CategoriaFicha) => (
                 <option key={categoria} value={categoria}>
                   {categoria}
                 </option>
@@ -368,7 +368,7 @@ export function FichaPerfilJugador({
 
       {pestana === "datos" && !puedeEditarDatos ? (
         <section className="space-y-4 rounded-2xl border border-border bg-surface p-5 sm:p-6">
-          <CampoLectura etiqueta="Nombre completo" valor={jugador.nombre_completo} />
+          <CampoLectura etiqueta="Nombre completo" valor={nombreJugador(jugador)} />
           {mostrarWhatsapp ? (
             <CampoLectura etiqueta="WhatsApp" valor={jugador.whatsapp || "—"} />
           ) : null}

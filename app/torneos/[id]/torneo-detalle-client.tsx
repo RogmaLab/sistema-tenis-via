@@ -28,6 +28,7 @@ import {
   generarCrucesClasificacion,
   generarCuadroFinal,
   planClasificacionPreliminar,
+  verificarColisionCancha,
   type CruceDraft,
 } from "@/lib/motor-torneo";
 import {
@@ -37,7 +38,7 @@ import {
 } from "@/lib/partidos-torneo";
 import {
   CANCHAS_TORNEO,
-  CATEGORIAS_JUGADOR,
+  CATEGORIAS_TORNEO,
   FASES_PARTIDO,
   type EstadoPartido,
   type Jugador,
@@ -61,6 +62,7 @@ import {
   rondasActivasDelCuadro,
   rondaMasAvanzadaConActividad,
   RONDA_CUADRO_LABELS,
+  etiquetasOrigenSlotsCuadro,
 } from "@/lib/adaptar-cuadro-torneo";
 import { CuadroLlaves } from "@/components/CuadroLlaves";
 import { FaseClasificacionTab } from "@/components/FaseClasificacionTab";
@@ -85,6 +87,7 @@ import {
 } from "@/lib/inscripciones-pago";
 import { ModalInscripcionPago } from "@/components/ModalInscripcionPago";
 import { suspenderPartidoPorLluvia } from "@/lib/suspender-partido-lluvia";
+import { nombreJugador } from "@/lib/nombre";
 import { useAuth } from "@/components/auth-provider";
 
 // Fila de "partidos" con jugador_1 / jugador_2 embebidos vía sus FKs.
@@ -395,7 +398,7 @@ export function TorneoDetalleClient({
     const q = busquedaInscribir.trim().toLowerCase();
     if (!q) return jugadoresDisponibles;
     return jugadoresDisponibles.filter((jugador) =>
-      `${jugador.nombre_completo} ${jugador.categoria}`
+      `${nombreJugador(jugador)} ${jugador.nombre_completo} ${jugador.categoria}`
         .toLowerCase()
         .includes(q)
     );
@@ -512,17 +515,17 @@ export function TorneoDetalleClient({
   const nombrePorIdCategoria = useMemo(() => {
     const mapa = new Map<string, string>();
     for (const inscripto of inscriptosFiltrados) {
-      mapa.set(inscripto.jugador.id, inscripto.jugador.nombre_completo);
+      mapa.set(inscripto.jugador.id, nombreJugador(inscripto.jugador));
     }
     for (const partido of [
       ...partidosClasificacionFiltrados,
       ...partidosCuadroCategoria,
     ]) {
       if (partido.jugador_1) {
-        mapa.set(partido.jugador_1.id, partido.jugador_1.nombre_completo);
+        mapa.set(partido.jugador_1.id, nombreJugador(partido.jugador_1));
       }
       if (partido.jugador_2) {
-        mapa.set(partido.jugador_2.id, partido.jugador_2.nombre_completo);
+        mapa.set(partido.jugador_2.id, nombreJugador(partido.jugador_2));
       }
     }
     return mapa;
@@ -763,7 +766,7 @@ export function TorneoDetalleClient({
   async function handleQuitarInscripto(inscripto: InscriptoTorneo) {
     if (!isAdmin) return;
     const confirmado = window.confirm(
-      `¿Seguro que querés quitar a ${inscripto.jugador.nombre_completo} de ${inscripto.categoria_inscripcion} en este torneo?`
+      `¿Seguro que querés quitar a ${nombreJugador(inscripto.jugador)} de ${inscripto.categoria_inscripcion} en este torneo?`
     );
     if (!confirmado) return;
 
@@ -942,7 +945,7 @@ export function TorneoDetalleClient({
   async function handleEliminarPartido(partido: PartidoConJugadores) {
     if (!isAdmin) return;
     const confirmado = window.confirm(
-      `¿Seguro que querés eliminar el partido "${partido.jugador_1?.nombre_completo ?? "?"} vs ${partido.jugador_2?.nombre_completo ?? "?"}"?`
+      `¿Seguro que querés eliminar el partido "${nombreJugador(partido.jugador_1, "?")} vs ${nombreJugador(partido.jugador_2, "?")}"?`
     );
     if (!confirmado) return;
 
@@ -1052,6 +1055,23 @@ export function TorneoDetalleClient({
     if (jugador1Id === jugador2Id) {
       window.alert("Los dos lados del partido no pueden ser la misma persona.");
       return;
+    }
+
+    if (cancha && fechaHorario) {
+      try {
+        await verificarColisionCancha({
+          partido_id: partidoEditando.id,
+          cancha,
+          fecha_programada: fechaHorario,
+        });
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "No se pudo verificar la disponibilidad de la cancha."
+        );
+        return;
+      }
     }
 
     // Solo invalidamos el resultado si de verdad cambió algún jugador. Si el
@@ -1296,6 +1316,15 @@ export function TorneoDetalleClient({
               <HorariosTorneo
                 partidos={partidosHorarios}
                 isLoading={isLoadingPartidos}
+                isAdmin={isAdmin}
+                onGestionarPartido={
+                  isAdmin
+                    ? (item) => {
+                        const original = partidos.find((p) => p.id === item.id);
+                        if (original) setPartidoProgramando(original);
+                      }
+                    : undefined
+                }
               />
             ) : null}
 
@@ -1366,7 +1395,7 @@ export function TorneoDetalleClient({
                             className="border-b border-border last:border-0 hover:bg-background/40"
                           >
                             <td className="px-4 py-3 font-medium text-foreground sm:px-6">
-                              {inscripto.jugador.nombre_completo}
+                              {nombreJugador(inscripto.jugador)}
                             </td>
                             <td className="px-4 py-3 sm:px-6">
                               <span className="inline-block rounded-full border border-border px-2.5 py-1 text-xs font-semibold text-foreground/80">
@@ -1390,7 +1419,7 @@ export function TorneoDetalleClient({
                                     onClick={() =>
                                       handleQuitarInscripto(inscripto)
                                     }
-                                    aria-label={`Quitar a ${inscripto.jugador.nombre_completo}`}
+                                    aria-label={`Quitar a ${nombreJugador(inscripto.jugador)}`}
                                     className="inline-flex items-center justify-center rounded-lg p-2 text-red-500/70 transition hover:bg-red-500/10 hover:text-red-500"
                                   >
                                     <Trash2 size={16} />
@@ -1753,7 +1782,7 @@ export function TorneoDetalleClient({
                     className="w-full rounded-lg border border-border bg-background px-4 py-2.5 text-sm text-foreground outline-none transition [color-scheme:dark] focus:border-[#ea580c] focus:ring-2 focus:ring-[#ea580c]/30"
                   >
                     <option value="">Elegí una categoría</option>
-                    {CATEGORIAS_JUGADOR.map((categoria) => (
+                    {CATEGORIAS_TORNEO.map((categoria) => (
                       <option key={categoria} value={categoria}>
                         {categoria}
                       </option>
@@ -1832,7 +1861,7 @@ export function TorneoDetalleClient({
                                 className="h-4 w-4 shrink-0 accent-[#d9682f]"
                               />
                               <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
-                                {jugador.nombre_completo}
+                                {nombreJugador(jugador)}
                               </span>
                               <span className="shrink-0 rounded-full border border-border px-2 py-0.5 text-[11px] font-semibold text-foreground/70">
                                 {jugador.categoria}
@@ -1883,11 +1912,26 @@ export function TorneoDetalleClient({
       {isAdmin && partidoProgramando && (
         <ModalProgramarPartido
           partido={partidoProgramando}
+          etiquetaJugador1={
+            etiquetasOrigenSlotsCuadro(partidos, partidoProgramando).slot1
+          }
+          etiquetaJugador2={
+            etiquetasOrigenSlotsCuadro(partidos, partidoProgramando).slot2
+          }
           onCerrar={() => setPartidoProgramando(null)}
           onGuardado={async () => {
             await cargarPartidos();
             router.refresh();
           }}
+          onCargarResultado={
+            partidoProgramando.jugador_1 && partidoProgramando.jugador_2
+              ? () => {
+                  const partido = partidoProgramando;
+                  setPartidoProgramando(null);
+                  abrirModalResultado(partido);
+                }
+              : undefined
+          }
         />
       )}
 
@@ -2007,7 +2051,7 @@ export function TorneoDetalleClient({
                 >
                   {inscriptos.map((inscripto) => (
                     <option key={inscripto.jugador.id} value={inscripto.jugador.id}>
-                      {inscripto.jugador.nombre_completo}
+                      {nombreJugador(inscripto.jugador)}
                     </option>
                   ))}
                 </select>
@@ -2029,7 +2073,7 @@ export function TorneoDetalleClient({
                 >
                   {inscriptos.map((inscripto) => (
                     <option key={inscripto.jugador.id} value={inscripto.jugador.id}>
-                      {inscripto.jugador.nombre_completo}
+                      {nombreJugador(inscripto.jugador)}
                     </option>
                   ))}
                 </select>

@@ -11,6 +11,7 @@ import {
 } from "@/lib/inscripciones-pago";
 import { formatFecha } from "@/lib/datetime";
 import { etiquetaMedioPago } from "@/lib/inscripciones-precio";
+import { formatearNombre } from "@/lib/nombre";
 
 function normalizarNombre(nombre: string) {
   return nombre.trim().toLocaleLowerCase("es-AR");
@@ -54,7 +55,7 @@ export function InscripcionesPendientesTab() {
     if (!inscripcion.jugador) return;
 
     const confirmar = confirm(
-      `¿Aprobar el pago de ${inscripcion.jugador.nombre_completo}?\n\nEsto inscribirá automáticamente al jugador en el torneo.`
+      `¿Aprobar el pago de ${formatearNombre(inscripcion.jugador.nombre_completo)}?\n\nEsto inscribirá automáticamente al jugador en el torneo.`
     );
     if (!confirmar) return;
 
@@ -79,7 +80,9 @@ export function InscripcionesPendientesTab() {
         throw new Error(payload.error || "No se pudo aprobar el pago.");
       }
 
-      const nombre = payload.nombreJugador ?? inscripcion.jugador.nombre_completo;
+      const nombre =
+        payload.nombreJugador ??
+        formatearNombre(inscripcion.jugador.nombre_completo);
 
       if (payload.yaInscritoEnTorneo) {
         toast.success(
@@ -115,7 +118,7 @@ export function InscripcionesPendientesTab() {
     if (!inscripcion.jugador) return;
 
     const confirmar = confirm(
-      `¿Rechazar el pago de ${inscripcion.jugador.nombre_completo}?\n\nEl jugador deberá reintentar la inscripción.`
+      `¿Rechazar el pago de ${formatearNombre(inscripcion.jugador.nombre_completo)}?\n\nEl jugador deberá reintentar la inscripción.`
     );
     if (!confirmar) return;
 
@@ -128,7 +131,7 @@ export function InscripcionesPendientesTab() {
         notasAdmin: "Pago rechazado por el administrador",
       });
       toast.success(
-        `Pago rechazado. ${inscripcion.jugador.nombre_completo} deberá reintentar.`,
+        `Pago rechazado. ${formatearNombre(inscripcion.jugador.nombre_completo)} deberá reintentar.`,
         { duration: 5000 }
       );
       await cargar();
@@ -176,13 +179,13 @@ export function InscripcionesPendientesTab() {
       </div>
 
       {inscripciones.map((inscripcion) => {
-        const nombreJugador =
-          inscripcion.jugador?.nombre_completo ?? "Sin nombre";
+        const nombreOriginal = inscripcion.jugador?.nombre_completo ?? "";
+        const nombreJugador = formatearNombre(nombreOriginal) || "Sin nombre";
         const titularPago = inscripcion.titular_pago?.trim() || null;
         const esEfectivo = (inscripcion.medio_pago ?? "transferencia") === "efectivo";
         const titularDistinto =
           !esEfectivo &&
-          titularDifiereDelJugador(nombreJugador, titularPago);
+          titularDifiereDelJugador(nombreOriginal, titularPago);
 
         return (
         <div

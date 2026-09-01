@@ -1,3 +1,6 @@
+import { compararNombres } from "@/lib/nombre";
+import { statsCuentanParaRanking } from "@/lib/categoria-nivel";
+
 export const PUNTOS_POR_PARTICIPACION = 1;
 export const PUNTOS_POR_PARTIDO_GANADO = 3;
 export const PUNTOS_BONUS_FINALISTA = 5;
@@ -11,6 +14,7 @@ const FASE_FINAL = "Final";
 export interface InscripcionParaRanking {
   jugador_id: string | null;
   torneo_id: string | null;
+  categoria?: string | null;
 }
 
 export interface PartidoParaRanking {
@@ -20,6 +24,7 @@ export interface PartidoParaRanking {
   jugador_2_id: string | null;
   resultado?: string | null;
   torneo_id?: string | null;
+  categoria?: string | null;
 }
 
 export interface PuntajeRanking {
@@ -79,6 +84,23 @@ function idAvanceParaBonus(partido: PartidoParaRanking) {
   return esJugadorHumano(partido.ganador_id) ? partido.ganador_id : null;
 }
 
+function fichaDe(
+  categoriasFicha: Map<string, string> | undefined,
+  jugadorId: string | null | undefined
+) {
+  if (!categoriasFicha || !jugadorId) return undefined;
+  return categoriasFicha.get(jugadorId);
+}
+
+function cuentaParaRanking(
+  categoriasFicha: Map<string, string> | undefined,
+  jugadorId: string | null | undefined,
+  categoriaCuadro: string | null | undefined
+) {
+  if (!esJugadorHumano(jugadorId)) return false;
+  return statsCuentanParaRanking(fichaDe(categoriasFicha, jugadorId), categoriaCuadro);
+}
+
 export function contarApariciones(
   filas: Record<string, string | null>[],
   columna: string
@@ -92,17 +114,26 @@ export function contarApariciones(
   return conteo;
 }
 
-export function contarVictoriasRanking(partidos: PartidoParaRanking[]) {
+export function contarVictoriasRanking(
+  partidos: PartidoParaRanking[],
+  categoriasFicha?: Map<string, string>
+) {
   const victorias = new Map<string, number>();
   for (const partido of partidos) {
     const ganadorId = idVictoriaRendimiento(partido);
     if (!ganadorId) continue;
+    if (!cuentaParaRanking(categoriasFicha, ganadorId, partido.categoria)) {
+      continue;
+    }
     victorias.set(ganadorId, (victorias.get(ganadorId) ?? 0) + 1);
   }
   return victorias;
 }
 
-export function calcularBonusFinales(partidos: PartidoParaRanking[]) {
+export function calcularBonusFinales(
+  partidos: PartidoParaRanking[],
+  categoriasFicha?: Map<string, string>
+) {
   const bonusPorJugador = new Map<string, number>();
 
   const sumarBonus = (id: string | null | undefined, puntos: number) => {
@@ -115,7 +146,9 @@ export function calcularBonusFinales(partidos: PartidoParaRanking[]) {
     const ganadorId = idAvanceParaBonus(partido);
     if (!ganadorId) continue;
 
-    sumarBonus(ganadorId, PUNTOS_BONUS_CAMPEON);
+    if (cuentaParaRanking(categoriasFicha, ganadorId, partido.categoria)) {
+      sumarBonus(ganadorId, PUNTOS_BONUS_CAMPEON);
+    }
 
     const perdedorId =
       partido.jugador_1_id === ganadorId
@@ -124,7 +157,10 @@ export function calcularBonusFinales(partidos: PartidoParaRanking[]) {
           ? partido.jugador_1_id
           : null;
 
-    if (!esNodoBye(perdedorId)) {
+    if (
+      !esNodoBye(perdedorId) &&
+      cuentaParaRanking(categoriasFicha, perdedorId, partido.categoria)
+    ) {
       sumarBonus(perdedorId, PUNTOS_BONUS_FINALISTA);
     }
   }
@@ -182,10 +218,18 @@ export function esSuperTieBreak(set: { j1: number; j2: number }): boolean {
  * BYE y W.O. no aportan games.
  * Los Super Tie-Breaks se cuentan como 1-0 para evitar distorsionar el diferencial.
  */
-export function diferenciaGamesCircuito(partidos: PartidoParaRanking[]) {
+export function diferenciaGamesCircuito(
+  partidos: PartidoParaRanking[],
+  categoriasFicha?: Map<string, string>
+) {
   const diferencia = new Map<string, number>();
-  const sumar = (id: string | null | undefined, delta: number) => {
+  const sumar = (
+    id: string | null | undefined,
+    delta: number,
+    categoriaCuadro: string | null | undefined
+  ) => {
     if (!esJugadorHumano(id) || delta === 0) return;
+    if (!cuentaParaRanking(categoriasFicha, id, categoriaCuadro)) return;
     diferencia.set(id, (diferencia.get(id) ?? 0) + delta);
   };
 
@@ -211,8 +255,8 @@ export function diferenciaGamesCircuito(partidos: PartidoParaRanking[]) {
       }
     }
 
-    sumar(partido.jugador_1_id, gamesJ1 - gamesJ2);
-    sumar(partido.jugador_2_id, gamesJ2 - gamesJ1);
+    sumar(partido.jugador_1_id, gamesJ1 - gamesJ2, partido.categoria);
+    sumar(partido.jugador_2_id, gamesJ2 - gamesJ1, partido.categoria);
   }
 
   return diferencia;
@@ -240,7 +284,7 @@ export function compararPuntajesRanking(
   const diffB = b.diferenciaGames ?? 0;
   if (diffB !== diffA) return diffB - diffA;
   if (a.nombre_completo && b.nombre_completo) {
-    return a.nombre_completo.localeCompare(b.nombre_completo, "es");
+    return compararNombres(a.nombre_completo, b.nombre_completo);
   }
   return 0;
 }
@@ -292,19 +336,66 @@ function agrupadosPorTorneo<T extends { torneo_id?: string | null }>(
 }
 
 /**
+ * Si el partido no trae categoría de cuadro, infiere la única coincidencia
+ * entre las inscripciones de los jugadores en ese torneo.
+ */
+function completarCategoriaPartidos(
+  partidos: PartidoParaRanking[],
+  inscripciones: InscripcionParaRanking[]
+): PartidoParaRanking[] {
+  const categoriasPorTorneoJugador = new Map<string, string[]>();
+  for (const fila of inscripciones) {
+    const torneoId = fila.torneo_id?.trim();
+    const jugadorId = fila.jugador_id?.trim();
+    const categoria = fila.categoria?.trim();
+    if (!torneoId || !esJugadorHumano(jugadorId) || !categoria) continue;
+    const clave = `${torneoId}:${jugadorId}`;
+    const lista = categoriasPorTorneoJugador.get(clave) ?? [];
+    lista.push(categoria);
+    categoriasPorTorneoJugador.set(clave, lista);
+  }
+
+  return partidos.map((partido) => {
+    if ((partido.categoria ?? "").trim()) return partido;
+    const torneoId = partido.torneo_id?.trim();
+    if (!torneoId) return partido;
+
+    const coincidencias = new Set<string>();
+    for (const jugadorId of [partido.jugador_1_id, partido.jugador_2_id]) {
+      if (!esJugadorHumano(jugadorId)) continue;
+      for (const categoria of categoriasPorTorneoJugador.get(
+        `${torneoId}:${jugadorId}`
+      ) ?? []) {
+        coincidencias.add(categoria);
+      }
+    }
+    if (coincidencias.size !== 1) return partido;
+    return { ...partido, categoria: [...coincidencias][0] };
+  });
+}
+
+/**
  * Puntos de ranking: se calculan por torneo y después se suman.
  * Un W.O. en contra (no presentación) deja en 0 los puntos de esa
  * competencia, aunque el jugador haya ganado partidos antes.
+ *
+ * `categoriasFicha` es la categoría real del club. Si un jugador compite
+ * en un cuadro inferior a esa ficha, esa inscripción/partido no suma.
  */
 export function calcularPuntajesRanking(
   inscripciones: InscripcionParaRanking[],
-  partidos: PartidoParaRanking[]
+  partidos: PartidoParaRanking[],
+  categoriasFicha?: Map<string, string>
 ): Map<
   string,
   PuntajeRanking & { participaciones: number }
 > {
+  const partidosConCategoria = completarCategoriaPartidos(
+    partidos,
+    inscripciones
+  );
   const inscripcionesPorTorneo = agrupadosPorTorneo(inscripciones);
-  const partidosPorTorneo = agrupadosPorTorneo(partidos);
+  const partidosPorTorneo = agrupadosPorTorneo(partidosConCategoria);
   const torneoIds = new Set([
     ...inscripcionesPorTorneo.keys(),
     ...partidosPorTorneo.keys(),
@@ -349,19 +440,26 @@ export function calcularPuntajesRanking(
     const penalizados = new Set<string>();
     for (const partido of partidosTorneo) {
       const perdedorId = perdedorWalkoverDisciplinario(partido);
-      if (perdedorId) penalizados.add(perdedorId);
+      if (!perdedorId) continue;
+      if (!cuentaParaRanking(categoriasFicha, perdedorId, partido.categoria)) {
+        continue;
+      }
+      penalizados.add(perdedorId);
     }
 
     const participaciones = new Map<string, number>();
     for (const fila of inscripcionesTorneo) {
       if (!esJugadorHumano(fila.jugador_id)) continue;
+      if (!cuentaParaRanking(categoriasFicha, fila.jugador_id, fila.categoria)) {
+        continue;
+      }
       participaciones.set(
         fila.jugador_id,
         (participaciones.get(fila.jugador_id) ?? 0) + 1
       );
     }
-    const victorias = contarVictoriasRanking(partidosTorneo);
-    const bonus = calcularBonusFinales(partidosTorneo);
+    const victorias = contarVictoriasRanking(partidosTorneo, categoriasFicha);
+    const bonus = calcularBonusFinales(partidosTorneo, categoriasFicha);
 
     const jugadorIds = new Set<string>([
       ...participaciones.keys(),
@@ -389,7 +487,10 @@ export function calcularPuntajesRanking(
     }
   }
 
-  const diferencias = diferenciaGamesCircuito(partidos);
+  const diferencias = diferenciaGamesCircuito(
+    partidosConCategoria,
+    categoriasFicha
+  );
   for (const [jugadorId, diferenciaGames] of diferencias) {
     const actual = totales.get(jugadorId);
     if (actual) {

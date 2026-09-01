@@ -16,6 +16,7 @@ import {
   type PestanaPerfil,
 } from "@/components/FichaPerfilJugador";
 import type { Jugador } from "@/lib/types";
+import { nombreJugador } from "@/lib/nombre";
 
 export function JugadorPerfilClient() {
   const params = useParams<{ id: string }>();
@@ -171,7 +172,7 @@ export function JugadorPerfilClient() {
           </div>
         ) : (
           <FichaPerfilJugador
-            titulo={jugador.nombre_completo}
+            titulo={nombreJugador(jugador)}
             subtitulo="Rendimiento, ranking y vitrina de copas."
             volver={{ href: "/jugadores", label: "Volver a Comunidad" }}
             jugador={jugador}

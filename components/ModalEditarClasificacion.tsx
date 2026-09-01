@@ -12,6 +12,7 @@ import {
   type CruceDraft,
 } from "@/lib/motor-torneo";
 import type { Jugador } from "@/lib/types";
+import { compararNombres, nombreJugador } from "@/lib/nombre";
 import { useAuth } from "@/components/auth-provider";
 
 interface PartidoClasificacionVista {
@@ -71,7 +72,7 @@ export function ModalEditarClasificacion({
   const inscriptosOrdenados = useMemo(
     () =>
       [...inscriptos].sort((a, b) =>
-        a.nombre_completo.localeCompare(b.nombre_completo, "es")
+        compararNombres(a.nombre_completo, b.nombre_completo)
       ),
     [inscriptos]
   );
@@ -164,7 +165,7 @@ export function ModalEditarClasificacion({
       <option value={SLOT_BYE}>--- BYE (Pase Libre) ---</option>
       {inscriptosOrdenados.map((jugador) => (
         <option key={jugador.id} value={jugador.id}>
-          {jugador.nombre_completo}
+          {nombreJugador(jugador)}
         </option>
       ))}
     </>
@@ -298,7 +299,7 @@ export function ModalEditarClasificacion({
               </p>
             ) : (
               <p className="mt-1 text-sm text-foreground/70">
-                {sinPartido.map((jugador) => jugador.nombre_completo).join(", ")}
+                {sinPartido.map((jugador) => nombreJugador(jugador)).join(", ")}
                 . Podés emparejarlos con otra persona o con BYE (pase directo).
               </p>
             )}

@@ -1,3 +1,5 @@
+import { nombreJugador } from "@/lib/nombre";
+
 export interface PartidoParaCuadro {
   id: string;
   resultado: string | null;
@@ -104,6 +106,80 @@ export function ordenarPorNumeroSlot<T extends { numero_slot?: number | null }>(
 
 function idComoTexto(valor: string | number | null | undefined) {
   return valor == null ? "" : String(valor);
+}
+
+type PartidoConOrigen = {
+  id: string;
+  siguiente_partido_id: string | null;
+  numero_slot?: number | null;
+  ganador_id: string | null;
+  jugador_1: { id: string } | null;
+  jugador_2: { id: string } | null;
+};
+
+/** Partidos de la ronda anterior que alimentan este cruce, en orden de slot. */
+export function partidosQueAlimentan<T extends PartidoConOrigen>(
+  partidos: T[],
+  destinoId: string
+): T[] {
+  const destino = idComoTexto(destinoId);
+  if (!destino) return [];
+  return ordenarPorNumeroSlot(
+    partidos.filter(
+      (partido) => idComoTexto(partido.siguiente_partido_id) === destino
+    )
+  );
+}
+
+/**
+ * Asigna el cruce de origen a cada silla vacía: el primer alimentador
+ * pendiente corresponde a jugador_1 si está vacío; el siguiente, a jugador_2.
+ */
+export function alimentadoresDeSlotsVacios<T extends PartidoConOrigen>(
+  partidos: T[],
+  destino: T
+): { slot1: T | null; slot2: T | null } {
+  const ocupados = new Set(
+    [destino.jugador_1?.id, destino.jugador_2?.id].filter(
+      (id): id is string => Boolean(id)
+    )
+  );
+  const pendientes = partidosQueAlimentan(partidos, destino.id).filter(
+    (origen) => !origen.ganador_id || !ocupados.has(origen.ganador_id)
+  );
+
+  let indice = 0;
+  return {
+    slot1: destino.jugador_1 ? null : (pendientes[indice++] ?? null),
+    slot2: destino.jugador_2 ? null : (pendientes[indice++] ?? null),
+  };
+}
+
+export function etiquetaGanadorOrigen(
+  origen: {
+    jugador_1: { nombre_completo: string } | null;
+    jugador_2: { nombre_completo: string } | null;
+  } | null
+): string | null {
+  if (!origen) return null;
+  const a = origen.jugador_1 ? nombreJugador(origen.jugador_1) : "";
+  const b = origen.jugador_2 ? nombreJugador(origen.jugador_2) : "";
+  if (a && b) return `Ganador ${a} vs. ${b}`;
+  return null;
+}
+
+export function etiquetasOrigenSlotsCuadro<T extends PartidoConOrigen & {
+  jugador_1: { nombre_completo: string } | null;
+  jugador_2: { nombre_completo: string } | null;
+}>(
+  partidos: T[],
+  destino: T
+): { slot1: string | null; slot2: string | null } {
+  const origenes = alimentadoresDeSlotsVacios(partidos, destino);
+  return {
+    slot1: etiquetaGanadorOrigen(origenes.slot1),
+    slot2: etiquetaGanadorOrigen(origenes.slot2),
+  };
 }
 
 export function hayCuadroEliminatorio(partidos: PartidoParaCuadro[]) {

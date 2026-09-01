@@ -18,6 +18,7 @@ import {
   formatearPrecioAr,
   type MedioPagoInscripcion,
 } from "@/lib/inscripciones-precio";
+import { formatearNombre } from "@/lib/nombre";
 
 type PasoModal = "pago" | "titular" | "confirmar_efectivo";
 type OrigenTitular = "propio" | "otro";
@@ -326,7 +327,7 @@ export function ModalInscripcionPago({
               >
                 A mi nombre
                 <span className="mt-1 block text-xs font-normal text-foreground/50">
-                  {jugadorNombre}
+                  {formatearNombre(jugadorNombre) || jugadorNombre}
                 </span>
               </button>
               <button

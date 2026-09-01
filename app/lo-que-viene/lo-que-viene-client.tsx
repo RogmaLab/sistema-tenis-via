@@ -11,7 +11,7 @@ import Link from "next/link";
 import { CalendarClock, MapPin, Pencil, Plus, Trophy, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/components/auth-provider";
-import { CATEGORIAS_JUGADOR, type CategoriaJugador, type TorneoFuturo } from "@/lib/types";
+import { CATEGORIAS_TORNEO, type CategoriaJugador, type TorneoFuturo } from "@/lib/types";
 import { formatFecha, formatFechaHorario } from "@/lib/datetime";
 import {
   eliminarTorneoFuturo,
@@ -92,18 +92,14 @@ export function LoQueVieneClient() {
   const conteosPorCategoria = useMemo(() => {
     const conteos: Record<string, number> = {
       todas: partidos.length,
-      "3ra": 0,
-      "4ta": 0,
-      "5ta": 0,
-      Damas: 0,
     };
+    for (const categoria of CATEGORIAS_TORNEO) {
+      conteos[categoria] = 0;
+    }
 
     partidos.forEach((partido) => {
-      if (partido.categoria) {
-        const categoria = partido.categoria as keyof typeof conteos;
-        if (categoria in conteos) {
-          conteos[categoria]++;
-        }
+      if (partido.categoria && partido.categoria in conteos) {
+        conteos[partido.categoria]++;
       }
     });
 
@@ -547,7 +543,7 @@ export function LoQueVieneClient() {
                     Categorías
                   </p>
                   <div className="flex flex-wrap gap-2">
-                    {CATEGORIAS_JUGADOR.map((categoria) => (
+                    {CATEGORIAS_TORNEO.map((categoria) => (
                       <label key={categoria} className="cursor-pointer">
                         <input
                           type="checkbox"

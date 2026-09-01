@@ -9,11 +9,12 @@ import { useAuth } from "@/components/auth-provider";
 import { LogoutButton } from "@/components/LogoutButton";
 import { listarJugadoresSinVincular } from "@/lib/jugador-vinculado";
 import {
-  CATEGORIAS_JUGADOR,
+  CATEGORIAS_FICHA,
   GENEROS,
-  type CategoriaJugador,
+  type CategoriaFicha,
   type Genero,
 } from "@/lib/types";
+import { nombreJugador } from "@/lib/nombre";
 
 const inputClass =
   "w-full rounded-lg border border-border bg-background px-4 py-2.5 text-foreground placeholder:text-foreground/30 outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/30";
@@ -53,13 +54,14 @@ export function VincularPerfilClient() {
     const termino = busqueda.trim().toLowerCase();
     if (!termino) return jugadores;
     return jugadores.filter((jugador) =>
-      jugador.nombre_completo.toLowerCase().includes(termino)
+      jugador.nombre_completo.toLowerCase().includes(termino) ||
+      nombreJugador(jugador).toLowerCase().includes(termino)
     );
   }, [jugadores, busqueda]);
 
   async function handleVincular(jugadorIdElegido: string, nombre: string) {
     const confirmado = window.confirm(
-      `¿Confirmás que sos ${nombre}? Vas a vincular este perfil a tu cuenta.`
+      `¿Confirmás que sos ${nombreJugador(nombre)}? Vas a vincular este perfil a tu cuenta.`
     );
     if (!confirmado) return;
 
@@ -174,7 +176,7 @@ export function VincularPerfilClient() {
                 >
                   <div className="min-w-0">
                     <p className="truncate font-medium text-foreground">
-                      {jugador.nombre_completo}
+                      {nombreJugador(jugador)}
                     </p>
                     <p className="text-xs text-foreground/50">
                       {jugador.categoria} · {jugador.genero}
@@ -253,7 +255,7 @@ export function VincularPerfilClient() {
                   <option value="" disabled>
                     Seleccioná una categoría
                   </option>
-                  {CATEGORIAS_JUGADOR.map((categoria: CategoriaJugador) => (
+                  {CATEGORIAS_FICHA.map((categoria: CategoriaFicha) => (
                     <option key={categoria} value={categoria}>
                       {categoria}
                     </option>

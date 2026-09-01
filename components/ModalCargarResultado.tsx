@@ -3,6 +3,7 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { Ban, AlertCircle } from "lucide-react";
 import { RESULTADO_WALKOVER } from "@/lib/motor-ranking";
+import { nombreJugador } from "@/lib/nombre";
 import { useAuth } from "@/components/auth-provider";
 
 interface JugadorResultado {
@@ -303,8 +304,8 @@ export function ModalCargarResultado({
           </button>
         </div>
         <p className="mb-5 text-sm text-foreground/60">
-          {partido.jugador_1?.nombre_completo ?? "?"} vs{" "}
-          {partido.jugador_2?.nombre_completo ?? "?"}
+          {nombreJugador(partido.jugador_1, "?")} vs{" "}
+          {nombreJugador(partido.jugador_2, "?")}
         </p>
 
         <form onSubmit={handleGuardar} className="space-y-5">
@@ -362,11 +363,11 @@ export function ModalCargarResultado({
                 <div className="grid grid-cols-[1fr_4.5rem_1.5rem_4.5rem] items-center gap-2 bg-background/60 px-3 py-2 text-xs font-medium text-foreground/40">
                   <span />
                   <span className="truncate text-center">
-                    {partido.jugador_1?.nombre_completo ?? "Lado 1"}
+                    {nombreJugador(partido.jugador_1, "Lado 1")}
                   </span>
                   <span />
                   <span className="truncate text-center">
-                    {partido.jugador_2?.nombre_completo ?? "Lado 2"}
+                    {nombreJugador(partido.jugador_2, "Lado 2")}
                   </span>
                 </div>
 
@@ -563,7 +564,7 @@ export function ModalCargarResultado({
                           : "border-border bg-background text-foreground/60 hover:text-foreground"
                       }`}
                     >
-                      {jugador.nombre_completo}
+                      {nombreJugador(jugador)}
                     </button>
                   )
               )}

@@ -12,6 +12,7 @@ import {
   type CruceDraft,
 } from "@/lib/motor-torneo";
 import type { Jugador } from "@/lib/types";
+import { compararNombres, nombreJugador } from "@/lib/nombre";
 import { ModalEditarClasificacion } from "@/components/ModalEditarClasificacion";
 import { TarjetaPartidoTenis } from "@/components/TarjetaPartidoTenis";
 
@@ -45,10 +46,8 @@ interface FaseClasificacionTabProps {
 
 function etiquetaSlot(slotId: string, inscriptos: Jugador[]) {
   if (esSlotBye(slotId)) return "BYE";
-  return (
-    inscriptos.find((jugador) => jugador.id === slotId)?.nombre_completo ??
-    "Sin asignar"
-  );
+  const crudo = inscriptos.find((jugador) => jugador.id === slotId);
+  return nombreJugador(crudo, "Sin asignar");
 }
 
 function claseSelect(marcadoRojo: boolean, fijado: boolean) {
@@ -88,7 +87,7 @@ export function FaseClasificacionTab({
   const inscriptosOrdenados = useMemo(
     () =>
       [...inscriptos].sort((a, b) =>
-        a.nombre_completo.localeCompare(b.nombre_completo, "es")
+        compararNombres(a.nombre_completo, b.nombre_completo)
       ),
     [inscriptos]
   );
@@ -238,8 +237,8 @@ export function FaseClasificacionTab({
     const crucesFijos = partidosGuardados
       ? partidosClasificacion.map((partido) => ({
           id: partido.id,
-          etiqueta1: partido.jugador_1?.nombre_completo ?? "BYE",
-          etiqueta2: partido.jugador_2?.nombre_completo ?? "BYE",
+          etiqueta1: nombreJugador(partido.jugador_1, "BYE"),
+          etiqueta2: nombreJugador(partido.jugador_2, "BYE"),
           ganadorId: partido.ganador_id,
           id1: partido.jugador_1?.id ?? null,
           id2: partido.jugador_2?.id ?? null,
@@ -350,7 +349,7 @@ export function FaseClasificacionTab({
             </p>
             <p className="mt-1 text-sm text-foreground/70">
               {pasesConfirmados
-                .map((jugador) => jugador.nombre_completo)
+                .map((jugador) => nombreJugador(jugador))
                 .join(", ")}
             </p>
           </div>
@@ -430,7 +429,7 @@ export function FaseClasificacionTab({
       <option value="">Elegí un nombre</option>
       {inscriptosOrdenados.map((jugador) => (
         <option key={jugador.id} value={jugador.id}>
-          {jugador.nombre_completo}
+          {nombreJugador(jugador)}
         </option>
       ))}
     </>
@@ -529,7 +528,7 @@ export function FaseClasificacionTab({
           </p>
           <p className="mt-1 text-sm text-foreground/70">
             {pasesDirectosDraft
-              .map((jugador) => jugador.nombre_completo)
+              .map((jugador) => nombreJugador(jugador))
               .join(", ")}
           </p>
         </div>

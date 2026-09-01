@@ -6,12 +6,14 @@ import {
   columnasDelArbolCuadro,
   rondaDelPartido,
   RONDA_CUADRO_LABELS,
+  etiquetasOrigenSlotsCuadro,
   type PartidoParaCuadro,
 } from "@/lib/adaptar-cuadro-torneo";
 import {
   TarjetaPartidoTenis,
   type DatosPartidoTarjeta,
 } from "@/components/TarjetaPartidoTenis";
+import { nombreJugador } from "@/lib/nombre";
 
 const TEMA_LLAVES = {
   fondoPartido: "#1a1a1a",
@@ -43,10 +45,10 @@ function nombreCampeon(final: PartidoLlave | undefined) {
     return null;
   }
   if (final.jugador_1?.id === final.ganador_id) {
-    return final.jugador_1.nombre_completo;
+    return nombreJugador(final.jugador_1);
   }
   if (final.jugador_2?.id === final.ganador_id) {
-    return final.jugador_2.nombre_completo;
+    return nombreJugador(final.jugador_2);
   }
   return null;
 }
@@ -88,7 +90,11 @@ function TarjetaCampeon({ partidoFinal }: { partidoFinal: PartidoLlave }) {
   );
 }
 
-function aDatosTarjeta(partido: PartidoLlave): DatosPartidoTarjeta {
+function aDatosTarjeta(
+  partido: PartidoLlave,
+  todos: PartidoLlave[]
+): DatosPartidoTarjeta {
+  const origenes = etiquetasOrigenSlotsCuadro(todos, partido);
   return {
     id: String(partido.id),
     estado: partido.estado,
@@ -99,6 +105,8 @@ function aDatosTarjeta(partido: PartidoLlave): DatosPartidoTarjeta {
     suspendido_lluvia: partido.suspendido_lluvia,
     jugador_1: partido.jugador_1,
     jugador_2: partido.jugador_2,
+    origen_slot_1: origenes.slot1,
+    origen_slot_2: origenes.slot2,
   };
 }
 
@@ -243,7 +251,7 @@ export function CuadroLlaves({
                 >
                   <div className="pointer-events-auto w-full min-w-0">
                     <TarjetaPartidoTenis
-                      partido={aDatosTarjeta(partido)}
+                      partido={aDatosTarjeta(partido, partidos)}
                       isAdmin={isAdmin}
                       resaltado={activa}
                       compacto

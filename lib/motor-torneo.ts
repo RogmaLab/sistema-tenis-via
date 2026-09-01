@@ -1,4 +1,10 @@
 import { createClient } from "@/lib/supabase/client";
+import {
+  DURACION_PARTIDO_MS,
+  franjaPartido,
+  intervalosSeSolapan,
+  mensajeCanchaOcupada,
+} from "@/lib/solapamiento-horarios";
 import type { Jugador } from "@/lib/types";
 import {
   calcularPuntajesRanking,
@@ -17,17 +23,25 @@ export type ResultadoGeneracionCruces = {
 async function obtenerPuntajesRanking(
   jugadorIds: string[]
 ): Promise<Map<string, PuntajeRanking>> {
+  if (jugadorIds.length === 0) {
+    return new Map();
+  }
+
   const supabase = createClient();
 
-  const [inscripcionesResult, partidosFinalizadosResult] = await Promise.all([
-    supabase.from("torneo_jugadores").select("jugador_id, torneo_id"),
-    supabase
-      .from("partidos")
-      .select(
-        "torneo_id, ganador_id, fase, jugador_1_id, jugador_2_id, resultado"
-      )
-      .eq("estado", "Finalizado"),
-  ]);
+  const [inscripcionesResult, partidosFinalizadosResult, jugadoresResult] =
+    await Promise.all([
+      supabase
+        .from("torneo_jugadores")
+        .select("jugador_id, torneo_id, categoria"),
+      supabase
+        .from("partidos")
+        .select(
+          "torneo_id, ganador_id, fase, categoria, jugador_1_id, jugador_2_id, resultado"
+        )
+        .eq("estado", "Finalizado"),
+      supabase.from("jugadores").select("id, categoria").in("id", jugadorIds),
+    ]);
 
   if (inscripcionesResult.error) {
     throw new Error(
@@ -39,10 +53,22 @@ async function obtenerPuntajesRanking(
       `No se pudo cargar el ranking para armar los cruces: ${partidosFinalizadosResult.error.message}`
     );
   }
+  if (jugadoresResult.error) {
+    throw new Error(
+      `No se pudo cargar el ranking para armar los cruces: ${jugadoresResult.error.message}`
+    );
+  }
+
+  const categoriasFicha = new Map(
+    ((jugadoresResult.data as { id: string; categoria: string }[] | null) ??
+      []
+    ).map((fila) => [fila.id, fila.categoria])
+  );
 
   const puntajesCompletos = calcularPuntajesRanking(
     (inscripcionesResult.data as InscripcionParaRanking[] | null) ?? [],
-    (partidosFinalizadosResult.data as PartidoParaRanking[] | null) ?? []
+    (partidosFinalizadosResult.data as PartidoParaRanking[] | null) ?? [],
+    categoriasFicha
   );
 
   const puntajes = new Map<string, PuntajeRanking>();
@@ -1433,31 +1459,29 @@ type SnapshotDestino = {
   jugador_2_id: string | null;
 };
 
-const DURACION_PARTIDO_MS = 90 * 60 * 1000;
+export async function verificarColisionCancha(params: {
+  partido_id: string;
+  cancha: string;
+  fecha_programada: string;
+}): Promise<void> {
+  const nuevoInicio = new Date(params.fecha_programada);
+  if (Number.isNaN(nuevoInicio.getTime())) return;
 
-async function verificarColisionCancha(
-  supabase: ReturnType<typeof createClient>,
-  params: {
-    partido_id: string;
-    cancha: string;
-    fecha_programada: string;
-  }
-): Promise<void> {
-  const centro = new Date(params.fecha_programada);
-  if (Number.isNaN(centro.getTime())) return;
+  const nuevaFranja = franjaPartido(nuevoInicio.getTime());
+  const ventanaDesde = new Date(
+    nuevaFranja.inicioMs - DURACION_PARTIDO_MS
+  ).toISOString();
+  const ventanaHasta = new Date(nuevaFranja.finMs).toISOString();
 
-  const desde = new Date(centro.getTime() - DURACION_PARTIDO_MS).toISOString();
-  const hasta = new Date(centro.getTime() + DURACION_PARTIDO_MS).toISOString();
-
+  const supabase = createClient();
   const { data, error } = await supabase
     .from("partidos")
-    .select("id")
+    .select("id, fecha_programada")
     .eq("cancha", params.cancha)
     .neq("id", params.partido_id)
     .not("fecha_programada", "is", null)
-    .gte("fecha_programada", desde)
-    .lte("fecha_programada", hasta)
-    .limit(1);
+    .gte("fecha_programada", ventanaDesde)
+    .lte("fecha_programada", ventanaHasta);
 
   if (error) {
     throw new Error(
@@ -1465,10 +1489,15 @@ async function verificarColisionCancha(
     );
   }
 
-  if (data && data.length > 0) {
-    throw new Error(
-      `Error: La ${params.cancha} ya está ocupada en ese horario por otro partido.`
-    );
+  const hayChoque = (data ?? []).some((partido) => {
+    if (!partido.fecha_programada) return false;
+    const existenteInicio = new Date(partido.fecha_programada).getTime();
+    if (Number.isNaN(existenteInicio)) return false;
+    return intervalosSeSolapan(nuevaFranja, franjaPartido(existenteInicio));
+  });
+
+  if (hayChoque) {
+    throw new Error(mensajeCanchaOcupada(params.cancha));
   }
 }
 
@@ -1483,7 +1512,7 @@ export async function guardarProgramacionPartido(params: {
   const supabase = createClient();
 
   if (params.cancha && params.fecha_programada) {
-    await verificarColisionCancha(supabase, {
+    await verificarColisionCancha({
       partido_id: params.partido_id,
       cancha: params.cancha,
       fecha_programada: params.fecha_programada,

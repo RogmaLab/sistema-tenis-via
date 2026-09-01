@@ -4,6 +4,8 @@ import {
   esPartidoEntreHumanos,
   type PartidoParaRanking,
 } from "@/lib/motor-ranking";
+import { nombreJugador } from "@/lib/nombre";
+import { statsCuentanParaRanking } from "@/lib/categoria-nivel";
 
 export type PuestoTrofeo = 1 | 2 | 3;
 
@@ -49,15 +51,17 @@ export function posicionRankingEnCategoria(params: {
   return { puesto: indice + 1, total: deLaCategoria.length };
 }
 
-/** Partidos reales (dos humanos), no BYE. */
+/** Partidos reales (dos humanos), no BYE ni cuadros inferiores a la ficha. */
 export function contarPartidosJugados(
   jugadorId: string,
-  partidos: PartidoParaRanking[]
+  partidos: PartidoParaRanking[],
+  categoriaFicha?: string | null
 ) {
   return partidos.filter(
     (partido) =>
       esPartidoEntreHumanos(partido) &&
-      (partido.jugador_1_id === jugadorId || partido.jugador_2_id === jugadorId)
+      (partido.jugador_1_id === jugadorId || partido.jugador_2_id === jugadorId) &&
+      statsCuentanParaRanking(categoriaFicha, partido.categoria)
   ).length;
 }
 
@@ -92,6 +96,7 @@ function perdioPartido(
  */
 export function extraerTrofeos(params: {
   jugadorId: string;
+  categoriaFicha?: string | null;
   torneosFinalizados: { id: string; nombre: string }[];
   partidos: {
     torneo_id: string | null;
@@ -113,6 +118,9 @@ export function extraerTrofeos(params: {
     const torneoId = partido.torneo_id?.trim();
     if (!torneoId || !idsFinalizados.has(torneoId)) continue;
     if (partido.estado !== "Finalizado") continue;
+    if (!statsCuentanParaRanking(params.categoriaFicha, partido.categoria)) {
+      continue;
+    }
     const categoria = (partido.categoria ?? "").trim() || "Sin categoría";
     const clave = `${torneoId}::${categoria}`;
     const lista = grupos.get(clave) ?? [];
@@ -204,7 +212,7 @@ export function elegirProximoPartido(params: {
   return {
     torneoId: elegido.torneo_id,
     torneoNombre: elegido.torneo_nombre,
-    rivalNombre: elegido.rival_nombre?.trim() || "Rival a definir",
+    rivalNombre: nombreJugador(elegido.rival_nombre, "Rival a definir"),
     cancha: elegido.cancha,
     fecha_programada: elegido.fecha_programada,
     fase: elegido.fase,

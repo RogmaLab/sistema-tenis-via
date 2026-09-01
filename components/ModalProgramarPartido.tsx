@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { Calendar, AlertCircle } from "lucide-react";
+import { Calendar, AlertCircle, Pencil } from "lucide-react";
+import { nombreJugador } from "@/lib/nombre";
 import { toast } from "sonner";
 import { CANCHAS_TORNEO } from "@/lib/types";
 import {
@@ -27,6 +28,9 @@ interface ModalProgramarPartidoProps {
   partido: PartidoProgramable;
   onCerrar: () => void;
   onGuardado: () => Promise<void> | void;
+  onCargarResultado?: () => void;
+  etiquetaJugador1?: string | null;
+  etiquetaJugador2?: string | null;
 }
 
 const inputClass =
@@ -36,6 +40,9 @@ export function ModalProgramarPartido({
   partido,
   onCerrar,
   onGuardado,
+  onCargarResultado,
+  etiquetaJugador1,
+  etiquetaJugador2,
 }: ModalProgramarPartidoProps) {
   const { isAdmin } = useAuth();
   const yaProgramado = Boolean(partido.fecha_programada || partido.cancha);
@@ -110,8 +117,8 @@ export function ModalProgramarPartido({
           </button>
         </div>
         <p className="mb-6 text-sm text-foreground/60">
-          {partido.jugador_1?.nombre_completo ?? "Por definir"} vs{" "}
-          {partido.jugador_2?.nombre_completo ?? "Por definir"}
+          {nombreJugador(partido.jugador_1, etiquetaJugador1 ?? "Por definir")} vs{" "}
+          {nombreJugador(partido.jugador_2, etiquetaJugador2 ?? "Por definir")}
         </p>
 
         <form onSubmit={handleGuardar} className="space-y-4">
@@ -218,6 +225,17 @@ export function ModalProgramarPartido({
               ))}
             </select>
           </div>
+
+          {onCargarResultado ? (
+            <button
+              type="button"
+              onClick={onCargarResultado}
+              className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-border px-4 py-2.5 text-sm font-semibold text-foreground/80 transition hover:bg-background hover:text-foreground"
+            >
+              <Pencil size={14} strokeWidth={2.25} />
+              Cargar resultado
+            </button>
+          ) : null}
 
           <div className="flex gap-3 pt-2">
             <button

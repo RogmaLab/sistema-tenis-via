@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Calendar, Check, MoreVertical, Pencil } from "lucide-react";
 import { formatProgramacionPartido } from "@/lib/datetime";
+import { nombreJugador } from "@/lib/nombre";
 import { BadgeEnCancha, estaEnCancha } from "@/components/BadgeEnCancha";
 
 export interface DatosPartidoTarjeta {
@@ -15,6 +16,8 @@ export interface DatosPartidoTarjeta {
   suspendido_lluvia?: boolean;
   jugador_1: { id?: string; nombre_completo: string } | null;
   jugador_2: { id?: string; nombre_completo: string } | null;
+  origen_slot_1?: string | null;
+  origen_slot_2?: string | null;
 }
 
 interface TarjetaPartidoTenisProps {
@@ -34,17 +37,23 @@ interface TarjetaPartidoTenisProps {
 function etiquetaCasillero(
   jugador: { nombre_completo: string } | null,
   partido: DatosPartidoTarjeta,
-  casilleroPendiente: "por-definir" | "esperando-rival"
+  casilleroPendiente: "por-definir" | "esperando-rival",
+  origenSlot?: string | null
 ) {
-  if (jugador?.nombre_completo) return jugador.nombre_completo;
+  if (jugador?.nombre_completo) return nombreJugador(jugador);
   if (partido.resultado === "W.O.") return "BYE";
+  if (origenSlot) return origenSlot;
   return casilleroPendiente === "esperando-rival"
     ? "Esperando rival..."
     : "Por definir";
 }
 
 function esTextoPlaceholder(nombre: string) {
-  return nombre === "Esperando rival..." || nombre === "Por definir";
+  return (
+    nombre === "Esperando rival..." ||
+    nombre === "Por definir" ||
+    nombre.startsWith("Ganador ")
+  );
 }
 
 function parsearSets(resultado: string | null) {
@@ -328,12 +337,14 @@ export function TarjetaPartidoTenis({
   const j1Nombre = etiquetaCasillero(
     partido.jugador_1,
     partido,
-    casilleroPendiente
+    casilleroPendiente,
+    partido.origen_slot_1
   );
   const j2Nombre = etiquetaCasillero(
     partido.jugador_2,
     partido,
-    casilleroPendiente
+    casilleroPendiente,
+    partido.origen_slot_2
   );
   const j1Gana = Boolean(
     partido.ganador_id && partido.ganador_id === partido.jugador_1?.id
@@ -344,8 +355,7 @@ export function TarjetaPartidoTenis({
   const j1Pierde = finalizado && !j1Gana && Boolean(partido.jugador_1);
   const j2Pierde = finalizado && !j2Gana && Boolean(partido.jugador_2);
   const programado = Boolean(partido.fecha_programada || partido.cancha);
-  const puedeProgramar =
-    isAdmin && pendiente && Boolean(partido.jugador_1 && partido.jugador_2);
+  const puedeProgramar = isAdmin && pendiente && Boolean(onProgramarPartido);
   const puedeCargar =
     isAdmin &&
     pendiente &&

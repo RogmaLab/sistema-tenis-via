@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/client";
 import { esNodoBye } from "@/lib/motor-ranking";
+import { formatearNombre } from "@/lib/nombre";
 import type { TorneoFuturo } from "@/lib/types";
 
 export interface ProximoPartido {
@@ -23,7 +24,7 @@ export function nombreEnAgenda(
 ) {
   const nombre = jugador?.nombre_completo?.trim();
   if (!nombre || esNodoBye(nombre)) return "Por definir";
-  return nombre;
+  return formatearNombre(nombre);
 }
 
 export function etiquetaFasePartido(partido: {

@@ -22,6 +22,7 @@ import {
   nombreEnAgenda,
   type ProximoPartido,
 } from "@/lib/lo-que-viene";
+import { sanearPartidosPendientesSinInscripcion } from "@/lib/retirar-jugador-torneo";
 import { FiltrosCategorias } from "@/components/FiltrosCategorias";
 import { BadgeEnCancha, estaEnCancha } from "@/components/BadgeEnCancha";
 
@@ -51,6 +52,19 @@ export function LoQueVieneClient() {
     try {
       const data = await fetchProximosPartidos();
       setPartidos(data);
+      if (!isAdmin) return;
+      try {
+        const huboCambios = await sanearPartidosPendientesSinInscripcion();
+        if (!huboCambios) return;
+        const actualizados = await fetchProximosPartidos();
+        setPartidos(actualizados);
+      } catch (error) {
+        console.error(
+          error instanceof Error
+            ? error.message
+            : "No se pudieron limpiar partidos de jugadores dados de baja."
+        );
+      }
     } catch (error) {
       toast.error(
         error instanceof Error
@@ -60,7 +74,7 @@ export function LoQueVieneClient() {
     } finally {
       setCargandoPartidos(false);
     }
-  }, []);
+  }, [isAdmin]);
 
   const cargarTorneos = useCallback(async () => {
     try {

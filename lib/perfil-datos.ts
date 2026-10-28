@@ -12,6 +12,10 @@ import {
   type ProximoPartidoPerfil,
   type TrofeoPerfil,
 } from "@/lib/perfil-jugador";
+import {
+  partidoTieneJugadorRetirado,
+  type InscripcionVigente,
+} from "@/lib/retirar-jugador-torneo";
 
 export interface ResumenPerfil {
   partidosJugados: number;
@@ -50,7 +54,7 @@ export async function fetchResumenPerfil(
     supabase
       .from("partidos")
       .select(
-        "id, torneo_id, fase, estado, cancha, fecha_programada, jugador_1_id, jugador_2_id, jugador_1:jugador_1_id ( id, nombre_completo ), jugador_2:jugador_2_id ( id, nombre_completo ), torneo:torneo_id ( id, nombre, estado )"
+        "id, torneo_id, fase, estado, categoria, cancha, fecha_programada, jugador_1_id, jugador_2_id, jugador_1:jugador_1_id ( id, nombre_completo ), jugador_2:jugador_2_id ( id, nombre_completo ), torneo:torneo_id ( id, nombre, estado )"
       )
       .eq("estado", "Pendiente")
       .not("fecha_programada", "is", null)
@@ -114,7 +118,29 @@ export async function fetchResumenPerfil(
   type RivalEmbed = { id: string; nombre_completo: string } | null;
   type TorneoEmbed = { id: string; nombre: string; estado: string } | null;
 
-  const proximos = (proximosResult.data ?? []).map(
+  const inscripcionesVigentes =
+    (inscripcionesResult.data as InscripcionVigente[] | null) ?? [];
+  const proximosCrudos = inscripcionesResult.error
+    ? (proximosResult.data ?? [])
+    : (proximosResult.data ?? []).filter(
+        (fila: {
+          torneo_id: string;
+          categoria: string | null;
+          jugador_1_id: string | null;
+          jugador_2_id: string | null;
+        }) =>
+          !partidoTieneJugadorRetirado(
+            {
+              torneo_id: fila.torneo_id,
+              categoria: fila.categoria,
+              jugador_1_id: fila.jugador_1_id,
+              jugador_2_id: fila.jugador_2_id,
+            },
+            inscripcionesVigentes
+          )
+      );
+
+  const proximos = proximosCrudos.map(
     (fila: {
       torneo_id: string;
       fase: string;

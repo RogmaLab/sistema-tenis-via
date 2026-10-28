@@ -16,6 +16,7 @@ import {
   type PartidoParaAsignar,
 } from "@/lib/auto-asignar-horarios";
 import { esJugadorHumano } from "@/lib/motor-ranking";
+import { sanearPartidosPendientesSinInscripcion } from "@/lib/retirar-jugador-torneo";
 
 export async function fetchConfigProgramacion(
   torneoId: string
@@ -134,6 +135,7 @@ export async function ejecutarAutoAsignacion(params: {
   }>;
 }> {
   const supabase = createClient();
+  await sanearPartidosPendientesSinInscripcion(params.torneoId);
   const config = await fetchConfigProgramacion(params.torneoId);
   if (!config || config.ventanas.length === 0) {
     throw new Error(

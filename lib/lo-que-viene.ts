@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/client";
 import { esNodoBye } from "@/lib/motor-ranking";
 import { formatearNombre } from "@/lib/nombre";
+import { partidoTieneJugadorRetirado } from "@/lib/retirar-jugador-torneo";
 import type { TorneoFuturo } from "@/lib/types";
 
 export interface ProximoPartido {
@@ -46,9 +47,40 @@ export async function fetchProximosPartidos(): Promise<ProximoPartido[]> {
 
   if (error) throw new Error(error.message);
 
-  return ((data ?? []) as unknown as ProximoPartido[]).filter(
+  const crudos = ((data ?? []) as unknown as ProximoPartido[]).filter(
     (partido) => Boolean(partido.fecha_programada)
   );
+  if (crudos.length === 0) return [];
+
+  const torneoIds = [
+    ...new Set(
+      crudos
+        .map((partido) => partido.torneo?.id)
+        .filter((id): id is string => Boolean(id))
+    ),
+  ];
+  if (torneoIds.length === 0) return crudos;
+
+  const { data: inscripciones, error: errorInscripciones } = await supabase
+    .from("torneo_jugadores")
+    .select("torneo_id, jugador_id, categoria")
+    .in("torneo_id", torneoIds);
+
+  if (errorInscripciones) throw new Error(errorInscripciones.message);
+
+  const vigentes = inscripciones ?? [];
+  return crudos.filter((partido) => {
+    if (!partido.torneo?.id) return true;
+    return !partidoTieneJugadorRetirado(
+      {
+        torneo_id: partido.torneo.id,
+        categoria: partido.categoria,
+        jugador_1_id: partido.jugador_1?.id ?? null,
+        jugador_2_id: partido.jugador_2?.id ?? null,
+      },
+      vigentes
+    );
+  });
 }
 
 export async function fetchTorneosFuturos(): Promise<TorneoFuturo[]> {

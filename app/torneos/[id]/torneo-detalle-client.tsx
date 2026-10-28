@@ -87,6 +87,11 @@ import {
 } from "@/lib/inscripciones-pago";
 import { ModalInscripcionPago } from "@/components/ModalInscripcionPago";
 import { suspenderPartidoPorLluvia } from "@/lib/suspender-partido-lluvia";
+import {
+  ocultarRetiradosEnPartido,
+  quitarJugadorDelTorneo,
+  sanearPartidosPendientesSinInscripcion,
+} from "@/lib/retirar-jugador-torneo";
 import { nombreJugador } from "@/lib/nombre";
 import { useAuth } from "@/components/auth-provider";
 
@@ -297,6 +302,33 @@ export function TorneoDetalleClient({
     if (data) setPartidos(data);
   }, [fetchPartidosDesdeSupabase]);
 
+  useEffect(() => {
+    if (!isAdmin || !torneoId || isLoadingInscriptos || isLoadingPartidos) {
+      return;
+    }
+    let cancelado = false;
+    sanearPartidosPendientesSinInscripcion(torneoId)
+      .then((huboCambios) => {
+        if (!cancelado && huboCambios) void cargarPartidos();
+      })
+      .catch((error) => {
+        console.error(
+          error instanceof Error
+            ? error.message
+            : "No se pudieron limpiar partidos de jugadores dados de baja."
+        );
+      });
+    return () => {
+      cancelado = true;
+    };
+  }, [
+    isAdmin,
+    torneoId,
+    isLoadingInscriptos,
+    isLoadingPartidos,
+    cargarPartidos,
+  ]);
+
   const cargarTorneo = useCallback(async () => {
     const data = await fetchTorneoDesdeSupabase();
     if (data) setTorneo(data);
@@ -437,10 +469,21 @@ export function TorneoDetalleClient({
     ).length;
   }, [inscriptos, categoriaFiltro]);
 
+  const partidosVigentes = useMemo(() => {
+    const vigentes = inscriptos.map((inscripto) => ({
+      torneo_id: torneoId,
+      jugador_id: inscripto.jugador.id,
+      categoria: inscripto.categoria_inscripcion,
+    }));
+    return partidos.map((partido) =>
+      ocultarRetiradosEnPartido(partido, torneoId, vigentes)
+    );
+  }, [partidos, inscriptos, torneoId]);
+
   const partidosClasificacionFiltrados = useMemo(() => {
     if (categoriaFiltro === "Todas") return [];
-    return partidosClasificacionDe(partidos, categoriaFiltro);
-  }, [partidos, categoriaFiltro]);
+    return partidosClasificacionDe(partidosVigentes, categoriaFiltro);
+  }, [partidosVigentes, categoriaFiltro]);
 
   const idsJugadoresFiltrados = useMemo(
     () => inscriptosFiltrados.map((inscripto) => inscripto.jugador.id),
@@ -449,11 +492,13 @@ export function TorneoDetalleClient({
 
   const partidosCuadroCategoria = useMemo(() => {
     if (categoriaFiltro === "Todas") return [];
-    return partidosCuadroDe(partidos, categoriaFiltro);
-  }, [partidos, categoriaFiltro]);
+    return partidosCuadroDe(partidosVigentes, categoriaFiltro);
+  }, [partidosVigentes, categoriaFiltro]);
 
   const partidosHorarios = useMemo(() => {
-    const conHorario = partidos.filter((partido) => partido.fecha_programada);
+    const conHorario = partidosVigentes.filter(
+      (partido) => partido.fecha_programada
+    );
     const porCategoria =
       categoriaFiltro === "Todas"
         ? conHorario
@@ -477,7 +522,7 @@ export function TorneoDetalleClient({
       const tb = Date.parse(b.fecha_programada ?? "");
       return ta - tb;
     });
-  }, [partidos, categoriaFiltro, generoFiltro, idsJugadoresFiltrados]);
+  }, [partidosVigentes, categoriaFiltro, generoFiltro, idsJugadoresFiltrados]);
 
   const planClasificacion = planClasificacionPreliminar(
     inscriptosFiltrados.length
@@ -766,21 +811,31 @@ export function TorneoDetalleClient({
   async function handleQuitarInscripto(inscripto: InscriptoTorneo) {
     if (!isAdmin) return;
     const confirmado = window.confirm(
-      `¿Seguro que querés quitar a ${nombreJugador(inscripto.jugador)} de ${inscripto.categoria_inscripcion} en este torneo?`
+      `¿Seguro que querés quitar a ${nombreJugador(inscripto.jugador)} de ${inscripto.categoria_inscripcion} en este torneo? También se lo saca de los partidos que todavía no se jugaron y de la programación.`
     );
     if (!confirmado) return;
 
-    const { error } = await supabase
-      .from("torneo_jugadores")
-      .delete()
-      .eq("id", inscripto.id);
-
-    if (error) {
-      console.error("Error al quitar inscripto:", error.message);
-      return;
+    try {
+      await quitarJugadorDelTorneo({
+        inscripcionId: inscripto.id,
+        torneoId,
+        jugadorId: inscripto.jugador.id,
+        categoria: inscripto.categoria_inscripcion,
+      });
+      toast.success(
+        "Listo. Ya no está en el torneo ni en los partidos pendientes."
+      );
+      await cargarInscriptos();
+      await cargarPartidos();
+      router.refresh();
+    } catch (error) {
+      const mensaje =
+        error instanceof Error
+          ? error.message
+          : "No se pudo quitar al jugador del torneo.";
+      console.error("Error al quitar inscripto:", mensaje);
+      toast.error(mensaje);
     }
-
-    await cargarInscriptos();
   }
 
   function abrirModalResultado(partido: PartidoConJugadores) {
@@ -1320,7 +1375,7 @@ export function TorneoDetalleClient({
                 onGestionarPartido={
                   isAdmin
                     ? (item) => {
-                        const original = partidos.find((p) => p.id === item.id);
+                        const original = partidosVigentes.find((p) => p.id === item.id);
                         if (original) setPartidoProgramando(original);
                       }
                     : undefined
@@ -1486,7 +1541,7 @@ export function TorneoDetalleClient({
                 onCargarResultado={
                   isAdmin
                     ? (partido) => {
-                        const original = partidos.find((p) => p.id === partido.id);
+                        const original = partidosVigentes.find((p) => p.id === partido.id);
                         if (original) abrirModalResultado(original);
                       }
                     : undefined
@@ -1494,7 +1549,7 @@ export function TorneoDetalleClient({
                 onProgramarPartido={
                   isAdmin
                     ? (partido) => {
-                        const original = partidos.find((p) => p.id === partido.id);
+                        const original = partidosVigentes.find((p) => p.id === partido.id);
                         if (original) setPartidoProgramando(original);
                       }
                     : undefined
@@ -1502,7 +1557,7 @@ export function TorneoDetalleClient({
                 onSuspenderPorLluvia={
                   isAdmin
                     ? (partido) => {
-                        const original = partidos.find((p) => p.id === partido.id);
+                        const original = partidosVigentes.find((p) => p.id === partido.id);
                         if (original) void handleSuspenderPorLluvia(original);
                       }
                     : undefined
@@ -1682,7 +1737,7 @@ export function TorneoDetalleClient({
                     onCargarResultado={
                       isAdmin
                         ? (card) => {
-                            const original = partidos.find(
+                            const original = partidosVigentes.find(
                               (partido) => partido.id === card.id
                             );
                             if (original) abrirModalResultado(original);
@@ -1692,7 +1747,7 @@ export function TorneoDetalleClient({
                     onProgramarPartido={
                       isAdmin
                         ? (card) => {
-                            const original = partidos.find(
+                            const original = partidosVigentes.find(
                               (partido) => partido.id === card.id
                             );
                             if (original) setPartidoProgramando(original);
@@ -1702,7 +1757,7 @@ export function TorneoDetalleClient({
                     onSuspenderPorLluvia={
                       isAdmin
                         ? (card) => {
-                            const original = partidos.find(
+                            const original = partidosVigentes.find(
                               (partido) => partido.id === card.id
                             );
                             if (original) void handleSuspenderPorLluvia(original);
@@ -1913,10 +1968,10 @@ export function TorneoDetalleClient({
         <ModalProgramarPartido
           partido={partidoProgramando}
           etiquetaJugador1={
-            etiquetasOrigenSlotsCuadro(partidos, partidoProgramando).slot1
+            etiquetasOrigenSlotsCuadro(partidosVigentes, partidoProgramando).slot1
           }
           etiquetaJugador2={
-            etiquetasOrigenSlotsCuadro(partidos, partidoProgramando).slot2
+            etiquetasOrigenSlotsCuadro(partidosVigentes, partidoProgramando).slot2
           }
           onCerrar={() => setPartidoProgramando(null)}
           onGuardado={async () => {

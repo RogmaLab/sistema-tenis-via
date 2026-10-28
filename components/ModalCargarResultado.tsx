@@ -40,6 +40,8 @@ interface ModalCargarResultadoProps {
     resultado: string;
     ganador_id: string;
   }) => Promise<void>;
+  onAnularResultado?: () => Promise<void>;
+  onEliminarPartido?: () => Promise<void>;
 }
 
 function parsearResultadoASets(resultado: string | null): SetScore[] {
@@ -115,6 +117,8 @@ export function ModalCargarResultado({
   partido,
   onCerrar,
   onGuardar,
+  onAnularResultado,
+  onEliminarPartido,
 }: ModalCargarResultadoProps) {
   const { isAdmin } = useAuth();
   const yaFinalizado = partido.estado === "Finalizado";
@@ -133,6 +137,9 @@ export function ModalCargarResultado({
     partido.ganador_id
   );
   const [guardando, setGuardando] = useState(false);
+  const [anulando, setAnulando] = useState(false);
+  const [eliminando, setEliminando] = useState(false);
+  const ocupado = guardando || anulando || eliminando;
 
   const validacionSets = useMemo(() => {
     const errores: string[] = [];
@@ -268,7 +275,7 @@ export function ModalCargarResultado({
 
   async function handleGuardar(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!isAdmin || !puedeGuardar || !ganadorId) return;
+    if (!isAdmin || !puedeGuardar || !ganadorId || ocupado) return;
 
     setGuardando(true);
     try {
@@ -278,6 +285,34 @@ export function ModalCargarResultado({
       });
     } finally {
       setGuardando(false);
+    }
+  }
+
+  async function handleAnular() {
+    if (!isAdmin || !onAnularResultado || ocupado) return;
+    const confirmado = window.confirm(
+      "¿Quitar el resultado? El partido vuelve a pendiente y, si era la Final, se saca el campeón. Si el ganador ya había avanzado, también se anulan los partidos siguientes."
+    );
+    if (!confirmado) return;
+    setAnulando(true);
+    try {
+      await onAnularResultado();
+    } finally {
+      setAnulando(false);
+    }
+  }
+
+  async function handleEliminar() {
+    if (!isAdmin || !onEliminarPartido || ocupado) return;
+    const confirmado = window.confirm(
+      "¿Eliminar este partido? Se borra el cruce del cuadro, el resultado y el campeón si era la Final. Esta acción no se puede deshacer."
+    );
+    if (!confirmado) return;
+    setEliminando(true);
+    try {
+      await onEliminarPartido();
+    } finally {
+      setEliminando(false);
     }
   }
 
@@ -587,18 +622,52 @@ export function ModalCargarResultado({
               <button
                 type="button"
                 onClick={onCerrar}
-                className="flex-1 rounded-lg border border-border px-4 py-2.5 text-sm font-semibold text-foreground/80 transition hover:bg-background"
+                disabled={ocupado}
+                className="flex-1 rounded-lg border border-border px-4 py-2.5 text-sm font-semibold text-foreground/80 transition hover:bg-background disabled:opacity-50"
               >
                 Cancelar
               </button>
               <button
                 type="submit"
-                disabled={!puedeGuardar || guardando}
+                disabled={!puedeGuardar || ocupado}
                 className="flex-1 rounded-lg bg-[#ea580c] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#c2410c] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {guardando ? "Guardando..." : "Guardar resultado"}
               </button>
             </div>
+            {yaFinalizado && (onAnularResultado || onEliminarPartido) ? (
+              <div className="flex flex-col gap-2 border-t border-border pt-3">
+                {onAnularResultado ? (
+                  <button
+                    type="button"
+                    onClick={() => void handleAnular()}
+                    disabled={ocupado}
+                    className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-foreground/70 transition hover:bg-background hover:text-foreground disabled:opacity-50"
+                  >
+                    {anulando ? "Quitando..." : "Quitar resultado"}
+                  </button>
+                ) : null}
+                {onEliminarPartido ? (
+                  <button
+                    type="button"
+                    onClick={() => void handleEliminar()}
+                    disabled={ocupado}
+                    className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm font-semibold text-red-400 transition hover:bg-red-500/20 hover:text-red-300 disabled:opacity-50"
+                  >
+                    {eliminando ? "Eliminando..." : "Eliminar partido"}
+                  </button>
+                ) : null}
+              </div>
+            ) : onEliminarPartido ? (
+              <button
+                type="button"
+                onClick={() => void handleEliminar()}
+                disabled={ocupado}
+                className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm font-semibold text-red-400 transition hover:bg-red-500/20 hover:text-red-300 disabled:opacity-50"
+              >
+                {eliminando ? "Eliminando..." : "Eliminar partido"}
+              </button>
+            ) : null}
           </div>
         </form>
       </div>

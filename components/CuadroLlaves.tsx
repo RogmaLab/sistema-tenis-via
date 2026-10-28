@@ -34,6 +34,7 @@ interface CuadroLlavesProps {
   onCargarResultado?: (partido: PartidoLlave) => void;
   onProgramarPartido?: (partido: PartidoLlave) => void;
   onSuspenderPorLluvia?: (partido: PartidoLlave) => void;
+  onEliminarPartido?: (partido: PartidoLlave) => void;
 }
 
 interface LineaLlave {
@@ -117,6 +118,7 @@ export function CuadroLlaves({
   onCargarResultado,
   onProgramarPartido,
   onSuspenderPorLluvia,
+  onEliminarPartido,
 }: CuadroLlavesProps) {
   const marcoRef = useRef<HTMLDivElement>(null);
   const nodosRef = useRef(new Map<string, HTMLDivElement>());
@@ -273,6 +275,11 @@ export function CuadroLlaves({
                       onSuspenderPorLluvia={
                         onSuspenderPorLluvia
                           ? () => onSuspenderPorLluvia(partido)
+                          : undefined
+                      }
+                      onEliminarPartido={
+                        onEliminarPartido
+                          ? () => onEliminarPartido(partido)
                           : undefined
                       }
                     />

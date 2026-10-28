@@ -42,6 +42,7 @@ interface FaseClasificacionTabProps {
   onCargarResultado?: (partido: PartidoClasificacionVista) => void;
   onProgramarPartido?: (partido: PartidoClasificacionVista) => void;
   onSuspenderPorLluvia?: (partido: PartidoClasificacionVista) => void;
+  onEliminarPartido?: (partido: PartidoClasificacionVista) => void;
 }
 
 function etiquetaSlot(slotId: string, inscriptos: Jugador[]) {
@@ -79,6 +80,7 @@ export function FaseClasificacionTab({
   onCargarResultado,
   onProgramarPartido,
   onSuspenderPorLluvia,
+  onEliminarPartido,
 }: FaseClasificacionTabProps) {
   const [vistaFijada, setVistaFijada] = useState(false);
   const [isConfirmando, setIsConfirmando] = useState(false);
@@ -315,6 +317,11 @@ export function FaseClasificacionTab({
                   onSuspenderPorLluvia={
                     onSuspenderPorLluvia
                       ? () => onSuspenderPorLluvia(cruce.partido!)
+                      : undefined
+                  }
+                  onEliminarPartido={
+                    onEliminarPartido
+                      ? () => onEliminarPartido(cruce.partido!)
                       : undefined
                   }
                 />

@@ -1718,3 +1718,186 @@ export async function actualizarResultadoPartidoConPropagacion(params: {
 
   return { ok: true };
 }
+
+async function reabrirTorneoSiQuedoSinCampeon(
+  supabase: ReturnType<typeof createClient>,
+  torneo_id: string
+) {
+  const { count, error: errorConteo } = await supabase
+    .from("partidos")
+    .select("*", { count: "exact", head: true })
+    .eq("torneo_id", torneo_id)
+    .eq("fase", "Final")
+    .eq("estado", "Finalizado")
+    .not("ganador_id", "is", null);
+
+  if (errorConteo) {
+    throw new Error(
+      `No se pudo verificar si queda un campeón: ${errorConteo.message}`
+    );
+  }
+  if ((count ?? 0) > 0) return;
+
+  const { error } = await supabase
+    .from("torneos")
+    .update({ estado: "activo", fecha_fin: null })
+    .eq("id", torneo_id)
+    .eq("estado", "finalizado");
+
+  if (error) {
+    throw new Error(`No se pudo reabrir el torneo: ${error.message}`);
+  }
+}
+
+async function anularResultadoRecursivo(
+  supabase: ReturnType<typeof createClient>,
+  partidoId: string,
+  visitados: Set<string>
+) {
+  if (visitados.has(partidoId)) return;
+  visitados.add(partidoId);
+
+  const { data: actual, error: errorActual } = await supabase
+    .from("partidos")
+    .select(
+      "id, torneo_id, fase, jugador_1_id, jugador_2_id, ganador_id, resultado, estado, siguiente_partido_id"
+    )
+    .eq("id", partidoId)
+    .maybeSingle();
+
+  if (errorActual || !actual) {
+    throw new Error(
+      `No se pudo leer el partido: ${errorActual?.message ?? "no encontrado"}`
+    );
+  }
+
+  const snapshot = actual as SnapshotPartido & { id: string };
+
+  if (snapshot.siguiente_partido_id) {
+    await anularResultadoRecursivo(
+      supabase,
+      snapshot.siguiente_partido_id,
+      visitados
+    );
+
+    if (snapshot.ganador_id) {
+      const { data: destino, error: errorDestino } = await supabase
+        .from("partidos")
+        .select("id, jugador_1_id, jugador_2_id")
+        .eq("id", snapshot.siguiente_partido_id)
+        .maybeSingle();
+
+      if (errorDestino) {
+        throw new Error(
+          `No se pudo leer el partido siguiente: ${errorDestino.message}`
+        );
+      }
+
+      if (destino) {
+        const parche: {
+          jugador_1_id?: null;
+          jugador_2_id?: null;
+        } = {};
+        if (destino.jugador_1_id === snapshot.ganador_id) {
+          parche.jugador_1_id = null;
+        }
+        if (destino.jugador_2_id === snapshot.ganador_id) {
+          parche.jugador_2_id = null;
+        }
+        if (Object.keys(parche).length > 0) {
+          const { error: errorDesasentar } = await supabase
+            .from("partidos")
+            .update(parche)
+            .eq("id", destino.id);
+          if (errorDesasentar) {
+            throw new Error(
+              `No se pudo sacar al ganador del partido siguiente: ${errorDesasentar.message}`
+            );
+          }
+        }
+      }
+    }
+  }
+
+  const hayResultado =
+    snapshot.estado === "Finalizado" ||
+    Boolean(snapshot.ganador_id) ||
+    Boolean(snapshot.resultado);
+
+  if (hayResultado) {
+    const { error: errorUpdate } = await supabase
+      .from("partidos")
+      .update({
+        resultado: null,
+        ganador_id: null,
+        estado: "Pendiente",
+      })
+      .eq("id", partidoId);
+
+    if (errorUpdate) {
+      throw new Error(`No se pudo anular el resultado: ${errorUpdate.message}`);
+    }
+  }
+
+  if (snapshot.fase === "Clasificacion") {
+    const ids = [
+      snapshot.jugador_1_id,
+      snapshot.jugador_2_id,
+      snapshot.ganador_id,
+    ].filter((id): id is string => Boolean(id));
+    for (const jugadorId of [...new Set(ids)]) {
+      await sincronizarClasificadoPorVictoriasClasificacion(
+        supabase,
+        snapshot.torneo_id,
+        jugadorId
+      );
+    }
+  }
+
+  if (snapshot.fase === "Final") {
+    await reabrirTorneoSiQuedoSinCampeon(supabase, snapshot.torneo_id);
+  }
+}
+
+/**
+ * Vuelve el partido a Pendiente (sin resultado ni ganador).
+ * Si el ganador ya había avanzado, también anula los partidos siguientes
+ * y lo saca de esas sillas. Si era la Final, reabre el torneo.
+ */
+export async function anularResultadoPartido(params: {
+  partido_id: string;
+}): Promise<{ ok: true }> {
+  const supabase = createClient();
+  await anularResultadoRecursivo(
+    supabase,
+    params.partido_id,
+    new Set<string>()
+  );
+  return { ok: true };
+}
+
+/**
+ * Anula el resultado (y la cadena hacia la Final) y borra el partido.
+ * Los que apuntaban acá quedan con siguiente_partido_id en null (FK).
+ */
+export async function eliminarPartido(params: {
+  partido_id: string;
+}): Promise<{ ok: true }> {
+  const supabase = createClient();
+  await anularResultadoRecursivo(
+    supabase,
+    params.partido_id,
+    new Set<string>()
+  );
+
+  const { error } = await supabase
+    .from("partidos")
+    .delete()
+    .eq("id", params.partido_id);
+
+  if (error) {
+    throw new Error(`No se pudo eliminar el partido: ${error.message}`);
+  }
+
+  return { ok: true };
+}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Calendar, Check, MoreVertical, Pencil } from "lucide-react";
+import { Calendar, Check, MoreVertical, Pencil, Trash2 } from "lucide-react";
 import { formatProgramacionPartido } from "@/lib/datetime";
 import { nombreJugador } from "@/lib/nombre";
 import { BadgeEnCancha, estaEnCancha } from "@/components/BadgeEnCancha";
@@ -32,6 +32,7 @@ interface TarjetaPartidoTenisProps {
   onCargarResultado?: () => void;
   onProgramarPartido?: () => void;
   onSuspenderPorLluvia?: () => void;
+  onEliminarPartido?: () => void;
 }
 
 function etiquetaCasillero(
@@ -329,6 +330,7 @@ export function TarjetaPartidoTenis({
   onCargarResultado,
   onProgramarPartido,
   onSuspenderPorLluvia,
+  onEliminarPartido,
 }: TarjetaPartidoTenisProps) {
   const finalizado = partido.estado === "Finalizado";
   const pendiente = partido.estado === "Pendiente";
@@ -355,13 +357,13 @@ export function TarjetaPartidoTenis({
   const j1Pierde = finalizado && !j1Gana && Boolean(partido.jugador_1);
   const j2Pierde = finalizado && !j2Gana && Boolean(partido.jugador_2);
   const programado = Boolean(partido.fecha_programada || partido.cancha);
-  const puedeProgramar = isAdmin && pendiente && Boolean(onProgramarPartido);
+  const puedeProgramar = isAdmin && Boolean(onProgramarPartido);
   const puedeCargar =
     isAdmin &&
     pendiente &&
     Boolean(partido.jugador_1 && partido.jugador_2);
-  const puedeEditar =
-    isAdmin && finalizado && !esWO && Boolean(onCargarResultado);
+  const puedeEditar = isAdmin && finalizado && Boolean(onCargarResultado);
+  const puedeEliminar = isAdmin && Boolean(onEliminarPartido);
   const puedeSuspenderPorLluvia =
     isAdmin &&
     pendiente &&
@@ -430,7 +432,8 @@ export function TarjetaPartidoTenis({
           esPlaceholder={esTextoPlaceholder(j2Nombre)}
         />
 
-        {isAdmin && (puedeProgramar || puedeCargar || puedeEditar) ? (
+        {isAdmin &&
+        (puedeProgramar || puedeCargar || puedeEditar || puedeEliminar) ? (
           <div
             data-export-hide
             className="flex gap-1.5 border-t border-[#3f3f46] p-1.5 print:hidden"
@@ -453,6 +456,23 @@ export function TarjetaPartidoTenis({
               >
                 <Pencil size={12} strokeWidth={2.25} />
                 {pendiente ? "Cargar Resultado" : "Editar Resultado"}
+              </button>
+            ) : null}
+            {puedeEliminar && onEliminarPartido ? (
+              <button
+                type="button"
+                onClick={() => {
+                  const confirmado = window.confirm(
+                    "¿Eliminar este partido? Se borra el cruce, el resultado y el campeón si era la Final. Esta acción no se puede deshacer."
+                  );
+                  if (!confirmado) return;
+                  onEliminarPartido();
+                }}
+                aria-label="Eliminar partido"
+                className="inline-flex min-h-8 items-center justify-center gap-1 rounded-md border border-red-500/30 bg-red-500/10 px-2 py-1 text-[10px] font-semibold text-red-400 transition hover:bg-red-500/20 hover:text-red-300"
+              >
+                <Trash2 size={12} strokeWidth={2.25} />
+                Eliminar
               </button>
             ) : null}
           </div>

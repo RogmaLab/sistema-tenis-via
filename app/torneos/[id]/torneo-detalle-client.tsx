@@ -24,7 +24,9 @@ import { toJpeg } from "html-to-image";
 import { createClient } from "@/lib/supabase/client";
 import {
   actualizarResultadoPartidoConPropagacion,
+  anularResultadoPartido,
   construirOpcionesCuadroManual,
+  eliminarPartido,
   generarCrucesClasificacion,
   generarCuadroFinal,
   planClasificacionPreliminar,
@@ -907,6 +909,49 @@ export function TorneoDetalleClient({
     router.refresh();
   }
 
+  async function refrescarTrasCambioPartido(partido: PartidoConJugadores) {
+    cerrarModalResultado();
+    await cargarPartidos();
+    await cargarTorneo();
+    if (partido.fase === "Clasificacion") {
+      await cargarInscriptos();
+    }
+    router.refresh();
+  }
+
+  async function handleAnularResultado() {
+    if (!isAdmin || !partidoCargandoResultado) return;
+    const partidoActual = partidoCargandoResultado;
+    try {
+      await anularResultadoPartido({ partido_id: partidoActual.id });
+      toast.success("Resultado anulado. El partido volvió a pendiente.");
+      await refrescarTrasCambioPartido(partidoActual);
+    } catch (error) {
+      const mensaje =
+        error instanceof Error
+          ? error.message
+          : "No se pudo anular el resultado.";
+      console.error("Error al anular resultado:", mensaje);
+      toast.error(mensaje);
+    }
+  }
+
+  async function handleEliminarPartido(partido: PartidoConJugadores) {
+    if (!isAdmin) return;
+    try {
+      await eliminarPartido({ partido_id: partido.id });
+      toast.success("Partido eliminado.");
+      await refrescarTrasCambioPartido(partido);
+    } catch (error) {
+      const mensaje =
+        error instanceof Error
+          ? error.message
+          : "No se pudo eliminar el partido.";
+      console.error("Error al eliminar partido:", mensaje);
+      toast.error(mensaje);
+    }
+  }
+
   // Delega el armado al motor (ranking + extremos + byes / W.O.).
   async function handleGenerarCruces() {
     if (!isAdmin) return;
@@ -995,26 +1040,6 @@ export function TorneoDetalleClient({
     } finally {
       setIsGenerandoCuadro(false);
     }
-  }
-
-  async function handleEliminarPartido(partido: PartidoConJugadores) {
-    if (!isAdmin) return;
-    const confirmado = window.confirm(
-      `¿Seguro que querés eliminar el partido "${nombreJugador(partido.jugador_1, "?")} vs ${nombreJugador(partido.jugador_2, "?")}"?`
-    );
-    if (!confirmado) return;
-
-    const { error } = await supabase
-      .from("partidos")
-      .delete()
-      .eq("id", partido.id);
-
-    if (error) {
-      console.error("Error al eliminar el partido:", error.message);
-      return;
-    }
-
-    await cargarPartidos();
   }
 
   async function handleSuspenderPorLluvia(partido: PartidoConJugadores) {
@@ -1562,6 +1587,14 @@ export function TorneoDetalleClient({
                       }
                     : undefined
                 }
+                onEliminarPartido={
+                  isAdmin
+                    ? (partido) => {
+                        const original = partidosVigentes.find((p) => p.id === partido.id);
+                        if (original) void handleEliminarPartido(original);
+                      }
+                    : undefined
+                }
               />
             ))}
 
@@ -1751,6 +1784,16 @@ export function TorneoDetalleClient({
                               (partido) => partido.id === card.id
                             );
                             if (original) setPartidoProgramando(original);
+                          }
+                        : undefined
+                    }
+                    onEliminarPartido={
+                      isAdmin
+                        ? (card) => {
+                            const original = partidosVigentes.find(
+                              (partido) => partido.id === card.id
+                            );
+                            if (original) void handleEliminarPartido(original);
                           }
                         : undefined
                     }
@@ -1995,6 +2038,10 @@ export function TorneoDetalleClient({
           partido={partidoCargandoResultado}
           onCerrar={cerrarModalResultado}
           onGuardar={handleGuardarResultado}
+          onAnularResultado={handleAnularResultado}
+          onEliminarPartido={() =>
+            handleEliminarPartido(partidoCargandoResultado)
+          }
         />
       )}
 

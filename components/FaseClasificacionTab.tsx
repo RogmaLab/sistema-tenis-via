@@ -7,6 +7,7 @@ import {
   esSlotBye,
   guardarCrucesDesdeDraft,
   hayByeVsByeEnDraft,
+  idsDuplicadosEnDraft,
   inscriptosConPaseDirecto,
   sortearCrucesDraft,
   type CruceDraft,
@@ -101,6 +102,7 @@ export function FaseClasificacionTab({
       cruce.jugador_1_id === cruce.jugador_2_id
   );
   const pasesDirectosDraft = inscriptosConPaseDirecto(inscriptos, crucesDraft);
+  const duplicadosDraft = idsDuplicadosEnDraft(crucesDraft);
 
   const partidosGuardados = partidosClasificacion.length > 0;
   const mostrarFijado = partidosGuardados || vistaFijada;
@@ -113,6 +115,16 @@ export function FaseClasificacionTab({
   );
   const pasesConfirmados = inscriptos.filter(
     (jugador) => !idsEnPartidosGuardados.has(jugador.id)
+  );
+  const conteoEnCrucesGuardados = new Map<string, number>();
+  for (const partido of partidosClasificacion) {
+    for (const id of [partido.jugador_1?.id, partido.jugador_2?.id]) {
+      if (!id) continue;
+      conteoEnCrucesGuardados.set(id, (conteoEnCrucesGuardados.get(id) ?? 0) + 1);
+    }
+  }
+  const duplicadosGuardados = inscriptos.filter(
+    (jugador) => (conteoEnCrucesGuardados.get(jugador.id) ?? 0) > 1
   );
 
   function handleSortear() {
@@ -216,6 +228,7 @@ export function FaseClasificacionTab({
 
   function slotMarcadoRojo(slotId: string, cruce: CruceDraft) {
     if (!slotId) return true;
+    if (duplicadosDraft.has(slotId)) return true;
     if (cruce.jugador_1_id === cruce.jugador_2_id) return true;
     if (esSlotBye(slotId)) {
       return (
@@ -284,10 +297,29 @@ export function FaseClasificacionTab({
             </button>
           )}
         </header>
+        {duplicadosGuardados.length > 0 ? (
+          <p className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+            {duplicadosGuardados.map((jugador) => nombreJugador(jugador)).join(", ")}{" "}
+            {duplicadosGuardados.length === 1 ? "está" : "están"} en más de un
+            cruce al mismo tiempo.
+            {pasesConfirmados.length > 0
+              ? ` ${pasesConfirmados.map((jugador) => nombreJugador(jugador)).join(", ")} quedó afuera: cambialo a mano en Editar Cruces.`
+              : " Cambialo a mano en Editar Cruces."}
+          </p>
+        ) : null}
         <ul className={GRILLA_CRUCES}>
           {crucesFijos.map((cruce, indice) =>
             partidosGuardados && cruce.partido ? (
-              <li key={cruce.id}>
+              <li
+                key={cruce.id}
+                className={
+                  [cruce.id1, cruce.id2].some(
+                    (id) => id && (conteoEnCrucesGuardados.get(id) ?? 0) > 1
+                  )
+                    ? "rounded-lg ring-2 ring-red-500/70"
+                    : undefined
+                }
+              >
                 <TarjetaPartidoTenis
                   partido={{
                     id: cruce.partido.id,
@@ -449,10 +481,19 @@ export function FaseClasificacionTab({
           Borrador de cruces
         </h2>
         <p className="mt-1 text-sm text-foreground/50">
-          {categoriaLabel}. Armá los partidos que quieras: una misma persona puede
-          repetir. El sorteo es solo un atajo.
+          {categoriaLabel}. Si alguien queda en dos cruces, se marca en rojo.
+          El que no tiene partido se sugiere abajo.
         </p>
       </header>
+
+      {duplicadosDraft.size > 0 ? (
+        <p className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+          Hay alguien en dos cruces al mismo tiempo.
+          {pasesDirectosDraft.length > 0
+            ? ` Podés usar a ${pasesDirectosDraft.map((jugador) => nombreJugador(jugador)).join(", ")}, que todavía no tiene partido.`
+            : ""}
+        </p>
+      ) : null}
 
       {(hayAutocruz || byeVsBye) && (
         <p className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-400">
@@ -466,7 +507,13 @@ export function FaseClasificacionTab({
         {crucesDraft.map((cruce, indice) => (
           <li
             key={cruce.id}
-            className="rounded-xl border border-border bg-surface p-2.5"
+            className={`rounded-xl border bg-surface p-2.5 ${
+              [cruce.jugador_1_id, cruce.jugador_2_id].some((id) =>
+                duplicadosDraft.has(id)
+              )
+                ? "border-red-500 ring-2 ring-red-500/40"
+                : "border-border"
+            }`}
           >
             <div className="mb-1.5 flex items-center justify-between">
               <p className="text-[10px] font-semibold uppercase tracking-wide text-foreground/40">

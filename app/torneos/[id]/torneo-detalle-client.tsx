@@ -30,6 +30,7 @@ import {
   generarCrucesClasificacion,
   generarCuadroFinal,
   planClasificacionPreliminar,
+  sincronizarCuadroDesdeClasificacion,
   verificarColisionCancha,
   type CruceDraft,
 } from "@/lib/motor-torneo";
@@ -896,10 +897,39 @@ export function TorneoDetalleClient({
       }
     }
 
+    let armoCuadro = false;
+    if (partidoActual.fase === "Clasificacion") {
+      const categoriaPartido = (
+        partidoActual.categoria ?? categoriaFiltro
+      ).trim();
+      const idsCategoria = inscriptos
+        .filter(
+          (inscripto) =>
+            categoriaDeInscripcion(inscripto) === categoriaPartido
+        )
+        .map((inscripto) => inscripto.jugador.id);
+      try {
+        const sync = await sincronizarCuadroDesdeClasificacion(
+          torneoId,
+          categoriaPartido,
+          idsCategoria
+        );
+        armoCuadro = sync.actualizado;
+      } catch (error) {
+        const mensaje =
+          error instanceof Error
+            ? error.message
+            : "No se pudo actualizar el cuadro.";
+        toast.error(mensaje);
+      }
+    }
+
     toast.success(
-      payload.resultado === RESULTADO_WALKOVER
-        ? "W.O. registrado. El ganador avanza."
-        : "Resultado guardado."
+      armoCuadro
+        ? "Resultado guardado. Armé los cruces posibles del cuadro (ganador contra perdedor). Los podés cambiar a mano."
+        : payload.resultado === RESULTADO_WALKOVER
+          ? "W.O. registrado. El ganador avanza."
+          : "Resultado guardado."
     );
     cerrarModalResultado();
     await cargarPartidos();
@@ -996,12 +1026,6 @@ export function TorneoDetalleClient({
 
   async function handleGenerarCuadroFinal() {
     if (!isAdmin) return;
-    if (!clasificacionCategoriaCompleta) {
-      toast.error(
-        "Cargá todos los resultados de clasificación de esta categoría antes de armar el cuadro."
-      );
-      return;
-    }
 
     const reemplazar = hayCuadroEliminatorio(partidosCuadroCategoria);
     if (
@@ -1638,15 +1662,8 @@ export function TorneoDetalleClient({
                         <button
                           type="button"
                           onClick={handleGenerarCuadroFinal}
-                          disabled={
-                            isGenerandoCuadro ||
-                            !clasificacionCategoriaCompleta
-                          }
-                          title={
-                            !clasificacionCategoriaCompleta
-                              ? "Cargá todos los resultados de clasificación primero"
-                              : undefined
-                          }
+                          disabled={isGenerandoCuadro}
+                          title="Arma el cuadro con los resultados que ya cargaste. Los que faltan quedan esperando rival. Después lo podés editar a mano."
                           className="inline-flex items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-hover active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           <Trophy size={16} />
@@ -1727,27 +1744,25 @@ export function TorneoDetalleClient({
                     Todavía no se generó el cuadro eliminatorio para esta
                     categoría.
                   </p>
-                  {isAdmin &&
-                  partidosClasificacionFiltrados.length > 0 &&
-                  clasificacionCategoriaCompleta ? (
-                    <button
-                      type="button"
-                      onClick={handleGenerarCuadroFinal}
-                      disabled={isGenerandoCuadro}
-                      className="mt-6 inline-flex items-center justify-center gap-2 rounded-xl bg-accent px-6 py-3 text-sm font-semibold text-white transition hover:bg-accent-hover active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <Trophy size={18} />
-                      {isGenerandoCuadro
-                        ? "Generando cuadro..."
-                        : "Generar Cuadro desde Clasificación"}
-                    </button>
-                  ) : isAdmin &&
-                    partidosClasificacionFiltrados.length > 0 &&
-                    !clasificacionCategoriaCompleta ? (
-                    <p className="mt-4 text-xs text-white/35">
-                      Cargá todos los resultados de clasificación para habilitar
-                      la generación automática.
-                    </p>
+                  {isAdmin && partidosClasificacionFiltrados.length > 0 ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={handleGenerarCuadroFinal}
+                        disabled={isGenerandoCuadro}
+                        className="mt-6 inline-flex items-center justify-center gap-2 rounded-xl bg-accent px-6 py-3 text-sm font-semibold text-white transition hover:bg-accent-hover active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <Trophy size={18} />
+                        {isGenerandoCuadro
+                          ? "Generando cuadro..."
+                          : "Generar Cuadro desde Clasificación"}
+                      </button>
+                      <p className="mt-3 text-xs text-white/35">
+                        {clasificacionCategoriaCompleta
+                          ? "Usa todos los resultados de clasificación. Después lo podés editar a mano."
+                          : "No hace falta esperar a que terminen todos. Arma los cruces que ya se pueden jugar (ganador contra perdedor) y deja en espera a los que faltan."}
+                      </p>
+                    </>
                   ) : null}
                 </div>
               ) : (

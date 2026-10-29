@@ -55,7 +55,7 @@ export function InscripcionesPendientesTab() {
     if (!inscripcion.jugador) return;
 
     const confirmar = confirm(
-      `¿Aprobar el pago de ${formatearNombre(inscripcion.jugador.nombre_completo)}?\n\nEsto inscribirá automáticamente al jugador en el torneo.`
+      `¿Aprobar el pago de ${formatearNombre(inscripcion.jugador.nombre_completo)}?\n\nSi su categoría está habilitada en el torneo, queda inscripto. Si no, el pago queda aprobado y hay que asignarle el cuadro a mano en Participantes.`
     );
     if (!confirmar) return;
 
@@ -71,6 +71,7 @@ export function InscripcionesPendientesTab() {
         ok?: boolean;
         error?: string;
         yaInscritoEnTorneo?: boolean;
+        cuadroAsignado?: boolean;
         nombreJugador?: string;
         correoEnviado?: boolean;
         errorCorreo?: string;
@@ -88,6 +89,11 @@ export function InscripcionesPendientesTab() {
         toast.success(
           `Pago aprobado. ${nombre} ya estaba inscripto al torneo.`,
           { duration: 5000 }
+        );
+      } else if (payload.cuadroAsignado === false) {
+        toast.success(
+          `Pago aprobado. ${nombre} no quedó en un cuadro porque su ficha no está entre las categorías del torneo. Asignalo a mano en Participantes.`,
+          { duration: 7000 }
         );
       } else {
         toast.success(`Pago aprobado. ${nombre} está inscripto al torneo.`, {

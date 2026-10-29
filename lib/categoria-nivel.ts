@@ -17,7 +17,9 @@ const NIVEL_CABALLEROS: Record<string, number> = {
 };
 
 const NIVEL_DAMAS: Record<string, number> = {
-  Damas: 3,
+  // Fichas históricas "Damas": mismo nivel que el cuadro compuesto,
+  // para que esos partidos sigan sumando y no se lean como categoría inferior.
+  Damas: 1,
   "4ta/5ta Damas": 1,
 };
 

@@ -6,9 +6,38 @@ import { formatearNombre } from "@/lib/nombre";
 
 export interface ResultadoAprobacionInscripcion {
   yaInscritoEnTorneo: boolean;
+  /** False si el pago se aprobó pero la ficha no está entre las categorías del torneo. */
+  cuadroAsignado: boolean;
   nombreJugador: string;
   correoEnviado: boolean;
   errorCorreo?: string;
+}
+
+type JugadorAprobacion = {
+  id: string;
+  nombre_completo: string;
+  categoria: string;
+};
+
+type TorneoAprobacion = {
+  id: string;
+  nombre: string;
+  categorias: string[] | null;
+};
+
+function categoriasHabilitadas(categorias: string[] | null | undefined): string[] {
+  return (categorias ?? [])
+    .map((categoria) => categoria.trim())
+    .filter((categoria) => categoria.length > 0);
+}
+
+function fichaEstaEnTorneo(
+  categoriaFicha: string | null | undefined,
+  categoriasTorneo: string[] | null | undefined
+): boolean {
+  const ficha = (categoriaFicha ?? "").trim();
+  if (!ficha) return false;
+  return categoriasHabilitadas(categoriasTorneo).includes(ficha);
 }
 
 async function obtenerEmailJugador(
@@ -49,7 +78,8 @@ export async function aprobarInscripcionConNotificacion(
       ),
       torneo:torneo_id (
         id,
-        nombre
+        nombre,
+        categorias
       )
     `
     )
@@ -64,12 +94,12 @@ export async function aprobarInscripcionConNotificacion(
   }
 
   const jugadorRaw = inscripcion.jugador as
-    | { id: string; nombre_completo: string; categoria: string }
-    | { id: string; nombre_completo: string; categoria: string }[]
+    | JugadorAprobacion
+    | JugadorAprobacion[]
     | null;
   const torneoRaw = inscripcion.torneo as
-    | { id: string; nombre: string }
-    | { id: string; nombre: string }[]
+    | TorneoAprobacion
+    | TorneoAprobacion[]
     | null;
 
   const jugador = Array.isArray(jugadorRaw) ? jugadorRaw[0] : jugadorRaw;
@@ -84,27 +114,38 @@ export async function aprobarInscripcionConNotificacion(
     estado: "aprobado",
   });
 
-  const { data: yaInscrito } = await supabase
+  const { data: yaInscrito, error: errorYaInscrito } = await supabase
     .from("torneo_jugadores")
     .select("id")
     .eq("torneo_id", inscripcion.torneo_id)
     .eq("jugador_id", inscripcion.jugador_id)
     .maybeSingle();
 
-  if (!yaInscrito) {
-    const categoriaJugador = jugador.categoria || "3ra";
+  if (errorYaInscrito) {
+    throw new Error(errorYaInscrito.message);
+  }
+
+  const fichaHabilitada = fichaEstaEnTorneo(
+    jugador.categoria,
+    torneo.categorias
+  );
+  let cuadroAsignado = Boolean(yaInscrito);
+
+  if (!yaInscrito && fichaHabilitada) {
+    const categoriaFicha = jugador.categoria.trim();
     const { error: errorInscripcion } = await supabase
       .from("torneo_jugadores")
       .insert({
         torneo_id: inscripcion.torneo_id,
         jugador_id: inscripcion.jugador_id,
-        categoria: categoriaJugador,
+        categoria: categoriaFicha,
         clasificado: false,
       });
 
     if (errorInscripcion) {
       throw new Error(errorInscripcion.message);
     }
+    cuadroAsignado = true;
   }
 
   let correoEnviado = false;
@@ -147,6 +188,7 @@ export async function aprobarInscripcionConNotificacion(
 
   return {
     yaInscritoEnTorneo: Boolean(yaInscrito),
+    cuadroAsignado,
     nombreJugador: formatearNombre(jugador.nombre_completo),
     correoEnviado,
     errorCorreo,

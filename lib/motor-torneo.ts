@@ -93,6 +93,13 @@ export interface AsientoCuadro {
 /** Valor del <select> para un asiento Bye en el borrador de cruces. */
 export const SLOT_BYE = "BYE";
 
+/** Valor del <select> para un asiento pendiente ("Esperando rival / clasificación"). */
+export const SLOT_POR_DEFINIR = "POR_DEFINIR";
+
+export function esSlotPorDefinir(slotId: string | null | undefined) {
+  return slotId === SLOT_POR_DEFINIR;
+}
+
 export function esSlotBye(slotId: string | null | undefined) {
   if (slotId == null || slotId === "" || slotId === SLOT_BYE) return true;
   return slotId.startsWith("bye-");
@@ -905,13 +912,188 @@ async function rollbackPartidosCreados(
   }
 }
 
-function armarPartidosPrimeraRonda(
-  jugadorIds: string[],
+/**
+ * Arma las entradas de primera ronda cruzando Ganadores (G) contra Perdedores (L)
+ * de distintos cruces de clasificación, priorizando los partidos ya terminados
+ * para que esos cruces del cuadro queden listos para programar de inmediato
+ * aunque falten otros partidos de clasificación por jugar.
+ */
+function planificarEntradasPrimeraRonda(
+  partidosClasificacion: PartidoClasificacion[],
+  pasesDirectos: string[],
+  jugadorIdsCategoria: string[]
+): {
+  entradas: (string | null)[];
+  totalEsperados: number;
+} {
+  const ordenados = ordenarPartidosClasificacion(partidosClasificacion);
+  if (ordenados.length === 0) {
+    const unicos = [...new Set(jugadorIdsCategoria.filter(Boolean))];
+    return {
+      entradas: unicos,
+      totalEsperados: unicos.length,
+    };
+  }
+
+  const usados = new Set<string>();
+  const reservarId = (id: string | null | undefined): string | null => {
+    if (!id || usados.has(id)) return null;
+    usados.add(id);
+    return id;
+  };
+
+  const terminadosDosJugadores: {
+    ganadorId: string;
+    perdedorId: string;
+  }[] = [];
+  const otrosConocidos: string[] = [];
+  let pendientesSlots = 0;
+
+  for (const partido of ordenados) {
+    const finalizado =
+      partido.estado === "Finalizado" && Boolean(partido.ganador_id);
+
+    if (esPartidoClasificacionBye(partido)) {
+      const humano = ganadorHumanoClasificacionBye(partido);
+      const id = reservarId(humano);
+      if (id) otrosConocidos.push(id);
+      else if (!finalizado) pendientesSlots += 1;
+      continue;
+    }
+
+    if (finalizado && partido.ganador_id) {
+      const perdedorRaw =
+        partido.jugador_1_id === partido.ganador_id
+          ? partido.jugador_2_id
+          : partido.jugador_2_id === partido.ganador_id
+            ? partido.jugador_1_id
+            : null;
+      const gId = reservarId(partido.ganador_id);
+      const lId = reservarId(perdedorRaw);
+      if (gId && lId) {
+        terminadosDosJugadores.push({ ganadorId: gId, perdedorId: lId });
+      } else {
+        if (gId) otrosConocidos.push(gId);
+        if (lId) otrosConocidos.push(lId);
+      }
+    } else {
+      // Partido de clasificación pendiente: reserva 2 lugares en el cuadro (G y L)
+      pendientesSlots += 2;
+    }
+  }
+
+  for (const id of pasesDirectos) {
+    const reservado = reservarId(id);
+    if (reservado) otrosConocidos.push(reservado);
+  }
+
+  const entradas: (string | null)[] = [];
+  const r = terminadosDosJugadores.length;
+
+  if (r >= 2) {
+    // Cruzamos Ganador del cruce i contra Perdedor del cruce (i + 1) % r
+    // Ejemplo: Cruce 1 (G1/L1) y Cruce 3 (G3/L3) -> (G1 vs L3) y (G3 vs L1)
+    for (let i = 0; i < r; i += 1) {
+      const ganador = terminadosDosJugadores[i].ganadorId;
+      const perdedorCruzado =
+        terminadosDosJugadores[(i + 1) % r].perdedorId;
+      entradas.push(ganador, perdedorCruzado);
+    }
+  } else if (r === 1) {
+    const { ganadorId, perdedorId } = terminadosDosJugadores[0];
+    if (otrosConocidos.length >= 2) {
+      const rivalG = otrosConocidos.shift()!;
+      const rivalL = otrosConocidos.shift()!;
+      entradas.push(ganadorId, rivalG, perdedorId, rivalL);
+    } else if (otrosConocidos.length === 1) {
+      const rivalG = otrosConocidos.shift()!;
+      entradas.push(ganadorId, rivalG);
+      if (pendientesSlots > 0) {
+        entradas.push(perdedorId, null);
+        pendientesSlots -= 1;
+      } else {
+        entradas.push(perdedorId);
+      }
+    } else if (pendientesSlots >= 2) {
+      // Separamos al ganador y perdedor del único cruce jugado para que esperen
+      // rivales de los cruces pendientes en vez de volver a jugar entre sí.
+      entradas.push(ganadorId, null, perdedorId, null);
+      pendientesSlots -= 2;
+    } else {
+      entradas.push(ganadorId, perdedorId);
+    }
+  }
+
+  for (const id of otrosConocidos) {
+    entradas.push(id);
+  }
+  for (let i = 0; i < pendientesSlots; i += 1) {
+    entradas.push(null);
+  }
+
+  return {
+    entradas,
+    totalEsperados: entradas.length,
+  };
+}
+
+function filaPrimeraRondaDesdeEntradas(
+  torneo_id: string,
+  categoria: string,
+  fase: string,
+  slot: number,
+  entrada1: string | null,
+  entrada2: string | null,
+  esSlotConBye: boolean
+) {
+  if (esSlotConBye) {
+    // Es un asiento con BYE (pase libre a la siguiente ronda).
+    // Si el jugador ya se conoce, avanza por W.O. Si todavía es null (esperando qualy),
+    // queda Pendiente hasta que termine su partido de clasificación.
+    if (entrada1) {
+      return {
+        torneo_id,
+        categoria,
+        jugador_1_id: entrada1,
+        jugador_2_id: null,
+        ganador_id: entrada1,
+        resultado: "W.O.",
+        estado: "Finalizado" as const,
+        ...metadatosEliminatoria(fase, slot),
+      };
+    }
+    return {
+      torneo_id,
+      categoria,
+      jugador_1_id: null,
+      jugador_2_id: null,
+      ganador_id: null,
+      resultado: null,
+      estado: "Pendiente" as const,
+      ...metadatosEliminatoria(fase, slot),
+    };
+  }
+
+  // Es un cruce real entre 2 clasificados (pueden estar ambos definidos, uno o ninguno).
+  return {
+    torneo_id,
+    categoria,
+    jugador_1_id: entrada1,
+    jugador_2_id: entrada2,
+    ganador_id: null,
+    resultado: null,
+    estado: "Pendiente" as const,
+    ...metadatosEliminatoria(fase, slot),
+  };
+}
+
+function armarPartidosPrimeraRondaProgresiva(
+  entradas: (string | null)[],
   torneo_id: string,
   categoria: string,
   fase: string
 ) {
-  const n = jugadorIds.length;
+  const n = entradas.length;
   if (n < 2) {
     throw new Error(
       "Se necesitan al menos 2 jugadores para armar el cuadro eliminatorio."
@@ -921,49 +1103,47 @@ function armarPartidosPrimeraRonda(
   const slots = potenciaDeDosSuperior(n);
   if (slots > MAX_SLOTS_PRIMERA_RONDA) {
     throw new Error(
-      `Hay ${n} jugadores para el cuadro; el máximo es ${MAX_SLOTS_PRIMERA_RONDA} (8 octavos).`
+      `Hay ${n} lugares para el cuadro; el máximo es ${MAX_SLOTS_PRIMERA_RONDA} (8 octavos).`
     );
   }
 
   const cantidadPartidos = slots / 2;
+  const crucesReales = n - cantidadPartidos;
   const partidos: Array<
-    ReturnType<typeof filaPartidoDesdePareja> & {
-      tipo_fase: typeof TIPO_FASE_ELIMINATORIA;
-      ronda: string;
-      numero_slot: number;
-    }
+    ReturnType<typeof filaPrimeraRondaDesdeEntradas>
   > = [];
+
   let i = 0;
-  let byeIndice = 0;
   let slot = 1;
 
-  const crucesReales = n - cantidadPartidos;
   for (let m = 0; m < crucesReales; m += 1) {
-    partidos.push({
-      ...filaPartidoDesdePareja(
+    partidos.push(
+      filaPrimeraRondaDesdeEntradas(
         torneo_id,
         categoria,
         fase,
-        asientoJugadorId(jugadorIds[i]),
-        asientoJugadorId(jugadorIds[i + 1])
-      ),
-      ...metadatosEliminatoria(fase, slot),
-    });
+        slot,
+        entradas[i] ?? null,
+        entradas[i + 1] ?? null,
+        false
+      )
+    );
     i += 2;
     slot += 1;
   }
 
   while (i < n) {
-    partidos.push({
-      ...filaPartidoDesdePareja(
+    partidos.push(
+      filaPrimeraRondaDesdeEntradas(
         torneo_id,
         categoria,
         fase,
-        asientoJugadorId(jugadorIds[i]),
-        asientoByeSlot(byeIndice++)
-      ),
-      ...metadatosEliminatoria(fase, slot),
-    });
+        slot,
+        entradas[i] ?? null,
+        null,
+        true
+      )
+    );
     i += 1;
     slot += 1;
   }
@@ -978,8 +1158,10 @@ function armarPartidosPrimeraRonda(
 }
 
 /**
- * Purga el cuadro de la categoría y lo regenera desde la clasificación.
- * Nunca borra partidos de fase Clasificacion ni inscriptos.
+ * Purga el cuadro de la categoría y lo genera (o regenera) desde la clasificación.
+ * Funciona tanto con toda la clasificación finalizada como con resultados parciales
+ * (o incluso antes de cargar resultados), cruzando Ganador vs. Perdedor de distintos
+ * cruces y dejando en "Esperando rival..." los lugares que aún se están jugando.
  */
 export async function generarCuadroFinal(
   torneo_id: string,
@@ -1021,25 +1203,6 @@ export async function generarCuadroFinal(
     (data as PartidoClasificacion[] | null) ?? []
   );
 
-  if (partidosClasificacion.length === 0) {
-    throw new Error(
-      "No hay partidos de clasificación para esta categoría. Generá y completá la fase de clasificación primero."
-    );
-  }
-
-  const pendientes = partidosClasificacion.filter(
-    (partido) => partido.estado !== "Finalizado" || !partido.ganador_id
-  );
-  if (pendientes.length > 0) {
-    throw new Error(
-      `Faltan ${pendientes.length} resultado(s) de clasificación por cargar antes de armar el cuadro.`
-    );
-  }
-
-  for (const partido of partidosClasificacion) {
-    validarPartidoClasificacionCompleto(partido);
-  }
-
   const idsEnQualy = new Set<string>();
   for (const partido of partidosClasificacion) {
     if (partido.jugador_1_id) idsEnQualy.add(partido.jugador_1_id);
@@ -1049,18 +1212,25 @@ export async function generarCuadroFinal(
     (id) => !idsEnQualy.has(id)
   );
 
-  const jugadores = jugadoresQueAvanzanDeClasificacion(
+  const { entradas, totalEsperados } = planificarEntradasPrimeraRonda(
     partidosClasificacion,
-    pasesDirectos
+    pasesDirectos,
+    jugadorIdsCategoria
   );
+
+  if (totalEsperados < 2) {
+    throw new Error(
+      "Se necesitan al menos 2 participantes para armar el cuadro eliminatorio."
+    );
+  }
 
   await purgarCuadroEliminatorioDeCategoria(torneo_id, categoriaTorneo);
 
-  const cantidadPartidos = potenciaDeDosSuperior(jugadores.length) / 2;
+  const cantidadPartidos = potenciaDeDosSuperior(totalEsperados) / 2;
   const rondas = rondasDelCuadro(cantidadPartidos);
   const fasePrimera = rondas[0];
-  const primeraRonda = armarPartidosPrimeraRonda(
-    jugadores,
+  const primeraRonda = armarPartidosPrimeraRondaProgresiva(
+    entradas,
     torneo_id,
     categoriaTorneo,
     fasePrimera
@@ -1116,6 +1286,195 @@ export async function generarCuadroFinal(
     await rollbackPartidosCreados(supabase, idsCreados);
     throw error;
   }
+}
+
+/**
+ * Sincroniza el cuadro eliminatorio a medida que se cargan resultados en Clasificación:
+ * - Si todavía no existe cuadro eliminatorio en la categoría, lo crea completo hasta la Final.
+ * - Si existe pero todavía no hay cruces con los dos nombres, horario ni resultado,
+ *   lo regenera con Ganador vs. Perdedor.
+ * - Si ya hay cruces armados (a mano o por un armado anterior), no los pisa:
+ *   solo completa sillas vacías.
+ */
+export async function sincronizarCuadroDesdeClasificacion(
+  torneo_id: string,
+  categoria: string,
+  jugadorIdsCategoria: string[]
+): Promise<{ actualizado: boolean }> {
+  const supabase = createClient();
+  const categoriaTorneo = categoria.trim();
+  if (!categoriaTorneo || jugadorIdsCategoria.length < 2) {
+    return { actualizado: false };
+  }
+
+  const { data: existentesData, error: errorExistentes } = await supabase
+    .from("partidos")
+    .select(
+      "id, fase, tipo_fase, ronda, numero_slot, estado, resultado, ganador_id, cancha, fecha_programada, jugador_1_id, jugador_2_id, siguiente_partido_id"
+    )
+    .eq("torneo_id", torneo_id)
+    .eq("categoria", categoriaTorneo)
+    .neq("fase", "Clasificacion")
+    .order("numero_slot", { ascending: true });
+
+  if (errorExistentes) {
+    throw new Error(
+      `No se pudo verificar el cuadro eliminatorio: ${errorExistentes.message}`
+    );
+  }
+
+  const existentes = existentesData ?? [];
+  if (existentes.length === 0) {
+    await generarCuadroFinal(torneo_id, categoriaTorneo, jugadorIdsCategoria);
+    return { actualizado: true };
+  }
+
+  const cuadroYaArmadoAMano = existentes.some(
+    (p) =>
+      Boolean(p.jugador_1_id && p.jugador_2_id) ||
+      Boolean(p.fecha_programada) ||
+      Boolean(p.cancha) ||
+      (p.estado === "Finalizado" && p.resultado !== "W.O.")
+  );
+
+  if (!cuadroYaArmadoAMano) {
+    await generarCuadroFinal(torneo_id, categoriaTorneo, jugadorIdsCategoria);
+    return { actualizado: true };
+  }
+
+  // Hay partidos programados o jugados en el cuadro: completamos solo los lugares
+  // vacíos de primera ronda sin tocar los partidos ya programados/jugados.
+  const { data: qualyData, error: errorQualy } = await supabase
+    .from("partidos")
+    .select(
+      "id, created_at, numero_slot, jugador_1_id, jugador_2_id, ganador_id, estado, categoria"
+    )
+    .eq("torneo_id", torneo_id)
+    .eq("fase", "Clasificacion")
+    .eq("categoria", categoriaTorneo)
+    .order("numero_slot", { ascending: true })
+    .order("created_at", { ascending: true });
+
+  if (errorQualy) {
+    throw new Error(
+      `No se pudieron leer los partidos de clasificación: ${errorQualy.message}`
+    );
+  }
+
+  const partidosClasificacion = ordenarPartidosClasificacion(
+    (qualyData as PartidoClasificacion[] | null) ?? []
+  );
+
+  const idsEnQualy = new Set<string>();
+  for (const partido of partidosClasificacion) {
+    if (partido.jugador_1_id) idsEnQualy.add(partido.jugador_1_id);
+    if (partido.jugador_2_id) idsEnQualy.add(partido.jugador_2_id);
+  }
+  const pasesDirectos = jugadorIdsCategoria.filter(
+    (id) => !idsEnQualy.has(id)
+  );
+
+  const { entradas, totalEsperados } = planificarEntradasPrimeraRonda(
+    partidosClasificacion,
+    pasesDirectos,
+    jugadorIdsCategoria
+  );
+
+  const ordenRonda: Record<string, number> = {
+    "Octavos de Final": 1,
+    "Cuartos de Final": 2,
+    Semifinal: 3,
+    Final: 4,
+  };
+
+  const fasesPresentes = [...new Set(existentes.map((p) => (p.ronda ?? p.fase) as string))]
+    .filter((f) => f in ordenRonda)
+    .sort((a, b) => ordenRonda[a] - ordenRonda[b]);
+
+  const fasePrimera = fasesPresentes[0];
+  if (!fasePrimera) return { actualizado: false };
+
+  const primeraRondaActual = existentes
+    .filter((p) => (p.ronda ?? p.fase) === fasePrimera)
+    .sort((a, b) => (a.numero_slot ?? 999) - (b.numero_slot ?? 999));
+
+  const yaSentados = new Set<string>();
+  for (const p of primeraRondaActual) {
+    if (p.jugador_1_id) yaSentados.add(p.jugador_1_id);
+    if (p.jugador_2_id) yaSentados.add(p.jugador_2_id);
+  }
+
+  const nuevosConocidos = entradas.filter(
+    (id): id is string => id != null && !yaSentados.has(id)
+  );
+
+  if (nuevosConocidos.length === 0) {
+    return { actualizado: false };
+  }
+
+  const cantidadPartidos = primeraRondaActual.length;
+  const crucesReales = Math.max(0, totalEsperados - cantidadPartidos);
+  let colaNuevos = [...nuevosConocidos];
+  let huboCambios = false;
+
+  // 1) Completar sillas vacías en los cruces reales (de 2 jugadores) que siguen Pendientes
+  for (let idx = 0; idx < Math.min(crucesReales, primeraRondaActual.length); idx += 1) {
+    if (colaNuevos.length === 0) break;
+    const partido = primeraRondaActual[idx];
+    if (partido.estado === "Finalizado") continue;
+
+    let j1 = partido.jugador_1_id as string | null;
+    let j2 = partido.jugador_2_id as string | null;
+    let modificado = false;
+
+    if (!j1 && colaNuevos.length > 0) {
+      j1 = colaNuevos.shift()!;
+      modificado = true;
+    }
+    if (!j2 && colaNuevos.length > 0) {
+      j2 = colaNuevos.shift()!;
+      modificado = true;
+    }
+
+    if (modificado) {
+      const { error } = await supabase
+        .from("partidos")
+        .update({ jugador_1_id: j1, jugador_2_id: j2 })
+        .eq("id", partido.id);
+      if (!error) huboCambios = true;
+    }
+  }
+
+  // 2) Completar los slots de BYE que estaban esperando a que termine la clasificación
+  for (let idx = crucesReales; idx < primeraRondaActual.length; idx += 1) {
+    if (colaNuevos.length === 0) break;
+    const partido = primeraRondaActual[idx];
+    if (partido.estado === "Finalizado" || partido.jugador_1_id || partido.jugador_2_id) {
+      continue;
+    }
+
+    const jugadorBye = colaNuevos.shift()!;
+    const { error } = await supabase
+      .from("partidos")
+      .update({
+        jugador_1_id: jugadorBye,
+        jugador_2_id: null,
+        ganador_id: jugadorBye,
+        resultado: "W.O.",
+        estado: "Finalizado",
+      })
+      .eq("id", partido.id);
+
+    if (!error) {
+      huboCambios = true;
+      await promoverGanadorAlSiguientePartido({
+        siguiente_partido_id: partido.siguiente_partido_id as string | null,
+        ganador_id: jugadorBye,
+      });
+    }
+  }
+
+  return { actualizado: huboCambios };
 }
 
 export interface OpcionSlotCuadro {

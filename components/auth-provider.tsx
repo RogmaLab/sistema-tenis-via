@@ -11,6 +11,7 @@ import {
 } from "react";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
+import { SUPABASE_ANON_KEY, SUPABASE_URL } from "@/lib/supabase/config";
 import type { RolUsuario } from "@/lib/auth/types";
 import { fetchResumenJugadorVinculado } from "@/lib/jugador-vinculado";
 
@@ -42,7 +43,10 @@ async function fetchRol(
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const supabase = useMemo(() => createClient(), []);
+  const supabase = useMemo(
+    () => createClient(SUPABASE_URL, SUPABASE_ANON_KEY),
+    []
+  );
   const [user, setUser] = useState<User | null>(null);
   const [rol, setRol] = useState<RolUsuario | null>(null);
   const [jugadorId, setJugadorId] = useState<string | null>(null);
